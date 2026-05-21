@@ -10,6 +10,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.6.2] — 2026-05-21
+
+### Fixed
+
+- **iOS build error** — `homeDirectoryForCurrentUser` is macOS-only. Replaced with `NSHomeDirectory()` in `ConfigLoader.swift`, `StringsGenerator.swift`, and `AssetsGenerator.swift`. Xcode compiles all package targets for all declared platforms, so this caused a compile error in any iOS project that added `SwiftL10nCore`. `NSHomeDirectory()` is available on macOS, iOS, tvOS, and watchOS and returns the same value on macOS.
+
+### Added (since v0.6.1)
+
+- **`SwiftL10n.scan(projectPath:)`** — unified entry point. One call generates both `i18n.swift` and `Assets.swift`, runs asset validation, and writes to `projectPath/Generated/` by default. Replaces the two-call `generateStrings()` + `generateAssets()` pattern.
+- **`generateAssets(sourcesPath:outputPath:enumName:)`** — top-level free function for standalone `Assets.swift` generation, matching the `generateStrings()` pattern.
+- **`AssetsGenerator`** — struct wrapper (mirrors `StringsGenerator`) for programmatic asset generation.
+
+---
+
 ## [0.6.1] — 2026-05-21
 
 ### Added
@@ -232,7 +246,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.1...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.2...HEAD
+[0.6.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.1...0.6.2
 [0.6.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.2...0.6.0
 [0.5.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.1...0.5.2
