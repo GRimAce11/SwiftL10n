@@ -309,6 +309,25 @@ The test suite covers:
 
 ---
 
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Production Guide](Documentation/ProductionGuide.md) | Step-by-step: install, scan, generate, migrate, CI/CD, custom rules |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to add detection rules and submit PRs |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+---
+
+## Example App
+
+`Examples/SwiftL10nDemo/` is a macOS SwiftUI app demonstrating the full API. Open it two ways:
+
+- **Xcode project**: open `Examples/SwiftL10nDemo/SwiftL10nDemo.xcodeproj` directly
+- **Swift Package**: open `Examples/SwiftL10nDemo/Package.swift` in Xcode or run `swift run` in that directory
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
