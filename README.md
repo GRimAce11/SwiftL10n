@@ -34,11 +34,15 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 
 ## Requirements
 
-| Tool | Version |
-|------|---------|
+| Platform | Minimum |
+|----------|---------|
 | Swift | 6.0+ |
 | Xcode | 16+ |
-| macOS | 14+ |
+| macOS | 13+ |
+| iOS | 13+ |
+| tvOS | 13+ |
+| watchOS | 6+ |
+| visionOS | 1+ |
 
 ---
 
