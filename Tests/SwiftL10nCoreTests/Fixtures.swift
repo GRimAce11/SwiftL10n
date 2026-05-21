@@ -102,6 +102,7 @@ enum TestFixtures {
                 Text("Title Text")
                 Button("Tap Me") {}
                 Label("Settings", systemImage: "gear")
+                Toggle("Enable Notifications", isOn: $showAlert)
                 TextField("Search…", text: $searchText)
                 Text("Subtitle")
                     .accessibilityLabel("Subtitle accessible description")

@@ -58,6 +58,7 @@ final class FixtureTests: XCTestCase {
         XCTAssertTrue(contexts.contains(.textView))
         XCTAssertTrue(contexts.contains(.buttonLabel))
         XCTAssertTrue(contexts.contains(.labelView))
+        XCTAssertTrue(contexts.contains(.toggle))
         XCTAssertTrue(contexts.contains(.textField))
         XCTAssertTrue(contexts.contains(.accessibilityLabel))
         XCTAssertTrue(contexts.contains(.navigationTitle))

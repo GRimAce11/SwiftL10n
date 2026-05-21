@@ -127,6 +127,7 @@ final class DetectionRuleTests: XCTestCase {
         XCTAssertTrue(names.contains("TextViewRule"))
         XCTAssertTrue(names.contains("ButtonRule"))
         XCTAssertTrue(names.contains("LabelViewRule"))
+        XCTAssertTrue(names.contains("ToggleRule"))
         XCTAssertTrue(names.contains("NavigationTitleRule"))
         XCTAssertTrue(names.contains("AlertRule"))
         XCTAssertTrue(names.contains("ConfirmationDialogRule"))
