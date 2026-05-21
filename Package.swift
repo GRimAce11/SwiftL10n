@@ -25,6 +25,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.1"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
     ],
     targets: [
         // MARK: - CLI Executable
@@ -33,6 +34,7 @@ let package = Package(
             dependencies: [
                 "SwiftL10nCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "Yams", package: "Yams"),
             ],
             path: "Sources/swiftl10n"
         ),
@@ -54,6 +56,7 @@ let package = Package(
                 "SwiftL10nCore",
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "Yams", package: "Yams"),
             ],
             path: "Tests/SwiftL10nCoreTests"
         ),

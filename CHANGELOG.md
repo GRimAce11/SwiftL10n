@@ -10,6 +10,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.5.0] — 2026-05-21
+
+### Added
+
+- **`.swiftl10n.yml` config file support** — project-level configuration for sources, output path, confidence threshold, exclusions, and incremental mode. All fields are optional with sensible defaults; a minimal file needs only `sources`.
+- **`swiftl10n init` command** — generates a commented `.swiftl10n.yml` in the current directory. Accepts `--sources`, `--output`, `--min-confidence`, and `--force` flags.
+- **`SwiftL10nConfig`** — `Sendable & Codable` model with nested `OutputConfig`; supports snake_case YAML keys (`minimum_confidence`, `enum_name`, `table_name`) and full round-trip encode/decode.
+- **`swiftl10n scan` config-aware** — discovers `.swiftl10n.yml` by walking up from the invocation directory (stops at `Package.swift`, `.git`, `.xcworkspace`). CLI flags always override config values. Path argument is now optional when config provides `sources`.
+- **Glob exclusion (Phase 1)** — `exclude` patterns matched against scanned paths. Supports prefix paths (`Sources/Generated`), extension wildcards (`*.generated.swift`), and any-depth prefix (`**/Generated`). Full glob matching arrives in v0.5.1.
+- **Yams 5.x** dependency added to the CLI executable and test targets.
+- **18 new tests** — `ConfigTests` (YAML decode, round-trip, defaults) and `ConfigLoaderTests` (discovery, load, validation) covering all config surface area.
+
+### Changed
+
+- `swiftl10n scan <path>` path argument is now **optional**. When omitted, sources come from `.swiftl10n.yml`. Existing scripts that pass a path continue to work unchanged.
+- `swiftl10n --version` now reports `0.5.0`.
+
+---
+
 ## [0.4.1] — 2026-05-21
 
 ### Fixed
@@ -151,7 +170,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.1...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.0...HEAD
+[0.5.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.0...0.3.1
