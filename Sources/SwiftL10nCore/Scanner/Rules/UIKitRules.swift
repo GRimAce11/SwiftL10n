@@ -84,17 +84,15 @@ public struct UITabBarItemRule: DetectionRule {
 
 // MARK: - Property assignments
 
-/// Detects common UIKit property assignments whose right-hand side is a string literal:
+/// Detects common UIKit property assignments whose right-hand side is a string literal.
 ///
-/// | Assignment | Context |
-/// |---|---|
-/// | `label.text = "…"` | `.uiLabel` |
-/// | `textView.text = "…"` | `.uiLabel` |
-/// | `textField.placeholder = "…"` | `.uiTextFieldPlaceholder` |
-/// | `searchBar.placeholder = "…"` | `.uiTextFieldPlaceholder` |
-/// | `navigationItem.title = "…"` | `.uiNavigationTitle` |
-/// | `self.title = "…"` | `.uiNavigationTitle` |
-/// | `title = "…"` | `.uiNavigationTitle` |
+/// | Property | Typical source | Context |
+/// |---|---|---|
+/// | `text` | `UILabel`, `UITextView`, `UITextField` | `.uiLabel` |
+/// | `placeholder` | `UITextField`, `UISearchBar` | `.uiTextFieldPlaceholder` |
+/// | `title` | `navigationItem.title`, `self.title`, `tabBarItem.title` | `.uiNavigationTitle` |
+/// | `prompt` | `navigationItem.prompt` | `.uiNavigationTitle` |
+/// | `backButtonTitle` | `navigationItem.backButtonTitle` | `.uiNavigationTitle` |
 public struct UIKitPropertyAssignmentRule: PropertyAssignmentRule {
     public let name = "UIKitPropertyAssignmentRule"
     public let baseConfidence = 0.88
@@ -102,9 +100,11 @@ public struct UIKitPropertyAssignmentRule: PropertyAssignmentRule {
     public init() {}
 
     private let mapping: [String: DetectionContext] = [
-        "text":        .uiLabel,
-        "placeholder": .uiTextFieldPlaceholder,
-        "title":       .uiNavigationTitle,
+        "text":             .uiLabel,
+        "placeholder":      .uiTextFieldPlaceholder,
+        "title":            .uiNavigationTitle,
+        "prompt":           .uiNavigationTitle,
+        "backButtonTitle":  .uiNavigationTitle,
     ]
 
     public func match(propertyName: String) -> DetectionContext? {

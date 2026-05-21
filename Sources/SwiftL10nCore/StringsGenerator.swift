@@ -27,7 +27,7 @@ public func generateStrings(
     sourcesPath: String,
     outputPath: String,
     minimumConfidence: Double = 0.85,
-    ruleEngine: RuleEngine = .default
+    ruleEngine: RuleEngine = .full     // detects SwiftUI + UIKit by default
 ) async throws -> StringsGenerator.Result {
     try await StringsGenerator(
         sourcesPath: sourcesPath,
@@ -111,13 +111,13 @@ public struct StringsGenerator: Sendable {
     ///   - outputPath:  Absolute path where `Strings.swift` will be written.
     ///                  The parent directory is created automatically if it does not exist.
     ///   - minimumConfidence: Strings below this threshold are ignored. Default `0.85`.
-    ///   - ruleEngine: Detection rules to apply. Use `.default` for SwiftUI, `.uikit` for
-    ///                 UIKit, or `.full` for a mixed project. Default `.default`.
+    ///   - ruleEngine: Detection rules to apply. Default `.full` (SwiftUI + UIKit).
+    ///                 Pass `.default` for SwiftUI-only or `.uikit` for UIKit-only.
     public init(
         sourcesPath: String,
         outputPath: String,
         minimumConfidence: Double = 0.85,
-        ruleEngine: RuleEngine = .default
+        ruleEngine: RuleEngine = .full
     ) {
         self.sourcesURL = URL(fileURLWithPath: sourcesPath)
         self.outputURL  = URL(fileURLWithPath: outputPath)
@@ -193,7 +193,10 @@ public struct StringsGenerator: Sendable {
                 at: outputURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
+            let existed = FileManager.default.fileExists(atPath: outputURL.path)
             try code.write(to: outputURL, atomically: true, encoding: .utf8)
+            let action = existed ? "Updated" : "Created"
+            print("\n✓ \(action) → \(outputURL.path)")
         } catch let error as NSError
             where error.domain == NSCocoaErrorDomain
                && [NSFileWriteNoPermissionError,
@@ -202,8 +205,7 @@ public struct StringsGenerator: Sendable {
         }
 
         let totalStrings = fileResults.flatMap(\.1).count
-        print("\n✓ \(totalStrings) string(s) found · \(allNamespaces.count) namespace(s) · \(warningCount) warning(s)")
-        print("✓ Written → \(outputURL.path)")
+        print("✓ \(totalStrings) string(s) found · \(allNamespaces.count) namespace(s) · \(warningCount) warning(s)")
 
         return Result(
             stringCount:    totalStrings,
