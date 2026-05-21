@@ -84,10 +84,12 @@ struct ContentView: View {
 // ── Paste this function anywhere in your project (same file or separate file) ──
 
 private func scanStrings() async {
+    let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"  // ← change only this
+
     do {
         let result = try await generateStrings(
-            sourcesPath: "/Users/you/Developer/YourApp/Sources/YourApp",          // ← change
-            outputPath:  "/Users/you/Developer/YourApp/Sources/YourApp/Generated/Strings.swift"  // ← change
+            sourcesPath: projectPath,
+            outputPath:  "\(projectPath)/Generated/Strings.swift"
         )
         print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
     } catch {
@@ -288,10 +290,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 // ── Paste this function anywhere in your project ───────────────────────────
 private func scanStrings() async {
+    let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
+
     do {
         let result = try await generateStrings(
-            sourcesPath: "/Users/you/Developer/YourApp/YourApp",                    // ← change
-            outputPath:  "/Users/you/Developer/YourApp/YourApp/Generated/Strings.swift"  // ← change
+            sourcesPath: projectPath,
+            outputPath:  "\(projectPath)/Generated/Strings.swift"
         )
         print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
     } catch {

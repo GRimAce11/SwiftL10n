@@ -9,9 +9,10 @@ import Foundation
 ///
 /// ```swift
 /// .task {
+///     let projectPath = "/path/to/Sources/MyApp"   // ← change only this
 ///     try? await generateStrings(
-///         sourcesPath: "/path/to/Sources/MyApp",
-///         outputPath:  "/path/to/Sources/MyApp/Generated/Strings.swift"
+///         sourcesPath: projectPath,
+///         outputPath:  "\(projectPath)/Generated/Strings.swift"
 ///     )
 /// }
 /// ```
