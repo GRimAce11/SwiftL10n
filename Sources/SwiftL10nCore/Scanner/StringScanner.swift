@@ -88,56 +88,81 @@ final class StringScannerVisitor: SyntaxVisitor {
         super.init(viewMode: .sourceAccurate)
     }
 
-    // MARK: - Visit
+    // MARK: - Visit function calls
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         for rule in ruleEngine.rules {
-            guard let detectionContext = rule.match(in: node) else { continue }
-            process(node, rule: rule, context: detectionContext)
-            break   // first-match-wins: a call site belongs to exactly one rule
+            guard let context = rule.match(in: node) else { continue }
+            guard let (value, hasInterp) = extractString(
+                from: node.arguments,
+                selector: rule.stringArgumentSelector
+            ) else { continue }
+            record(rawValue: value, hasInterpolation: hasInterp,
+                   context: context, baseConfidence: rule.baseConfidence, node: node)
+            // No break — allows e.g. UIAlertController to match both
+            // UIAlertControllerTitleRule and UIAlertControllerMessageRule
         }
         return .visitChildren
     }
 
-    // MARK: - Processing Pipeline
+    // MARK: - Visit property assignments (UIKit)
 
-    private func process(
-        _ node: FunctionCallExprSyntax,
-        rule: any DetectionRule,
-        context: DetectionContext
+    /// Handles `receiver.property = "string"` and bare `property = "string"`.
+    override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
+        let elements = Array(node.elements)
+        guard elements.count == 3,
+              elements[1].is(AssignmentExprSyntax.self),
+              let literal = elements[2].as(StringLiteralExprSyntax.self)
+        else { return .visitChildren }
+
+        let propName: String?
+        if let member = elements[0].as(MemberAccessExprSyntax.self) {
+            propName = member.declName.baseName.text
+        } else if let decl = elements[0].as(DeclReferenceExprSyntax.self) {
+            propName = decl.baseName.text
+        } else {
+            propName = nil
+        }
+
+        guard let name = propName else { return .visitChildren }
+
+        for rule in ruleEngine.assignmentRules {
+            guard let context = rule.match(propertyName: name) else { continue }
+            let (value, hasInterp) = segments(of: literal)
+            record(rawValue: value, hasInterpolation: hasInterp,
+                   context: context, baseConfidence: rule.baseConfidence, node: node)
+            break
+        }
+        return .visitChildren
+    }
+
+    // MARK: - Shared detection pipeline
+
+    private func record(
+        rawValue: String,
+        hasInterpolation: Bool,
+        context: DetectionContext,
+        baseConfidence: Double,
+        node: some SyntaxProtocol
     ) {
-        // Step 1 — Extract string argument
-        guard let (rawValue, hasInterpolation) = extractString(
-            from: node.arguments,
-            selector: rule.stringArgumentSelector
-        ) else { return }
-
-        // Step 2 — False-positive filter (run on static content only)
         let filterTarget = hasInterpolation ? staticContent(of: rawValue) : rawValue
         if let reason = filter.exclusionReason(for: filterTarget) {
-            // Emit a note so callers can understand why the string was skipped
-            let location = makeLocation(for: node)
             emittedDiagnostics.append(Diagnostic(
                 severity: .note,
                 message: "Skipped \"\(truncated(rawValue))\" — \(reason.explanation)",
-                location: location
+                location: makeLocation(for: node)
             ))
             return
         }
 
-        // Step 3 — Enclosing context
         let enclosing = contextExtractor.extract(from: node)
-
-        // Step 4 — Confidence score
         let confidence = scorer.score(
             value: filterTarget,
-            baseConfidence: rule.baseConfidence,
+            baseConfidence: baseConfidence,
             enclosingContext: enclosing
         )
-
         guard confidence >= minimumConfidence else { return }
 
-        // Step 5 — Interpolation diagnostic (warn but still record)
         if hasInterpolation {
             emittedDiagnostics.append(Diagnostic(
                 severity: .warning,
@@ -146,7 +171,6 @@ final class StringScannerVisitor: SyntaxVisitor {
             ))
         }
 
-        // Step 6 — Record
         detected.append(DetectedString(
             value: rawValue,
             location: makeLocation(for: node),
@@ -160,24 +184,25 @@ final class StringScannerVisitor: SyntaxVisitor {
     // MARK: - String Extraction
 
     /// Returns `(template, hasInterpolation)` or `nil` if no string literal is present.
-    ///
-    /// For interpolated strings the template replaces each interpolation segment with `{…}`,
-    /// e.g. `"Hello \(name)!"` → `("Hello {…}!", true)`.
     private func extractString(
         from arguments: LabeledExprListSyntax,
         selector: ArgumentSelector
     ) -> (value: String, hasInterpolation: Bool)? {
-        guard let arg = arguments.argument(for: selector) else { return nil }
-        guard let literal = arg.expression.as(StringLiteralExprSyntax.self) else { return nil }
+        guard let arg = arguments.argument(for: selector),
+              let literal = arg.expression.as(StringLiteralExprSyntax.self)
+        else { return nil }
+        return segments(of: literal)
+    }
 
+    /// Decodes a `StringLiteralExprSyntax` into a template string, replacing
+    /// `\(…)` interpolations with `{…}` markers.
+    private func segments(of literal: StringLiteralExprSyntax) -> (value: String, hasInterpolation: Bool) {
         let hasInterp = literal.segments.contains { $0.is(ExpressionSegmentSyntax.self) }
-
-        let value = literal.segments.compactMap { segment -> String? in
-            if let str = segment.as(StringSegmentSyntax.self) { return str.content.text }
-            if segment.is(ExpressionSegmentSyntax.self) { return "{…}" }
+        let value = literal.segments.compactMap { seg -> String? in
+            if let str = seg.as(StringSegmentSyntax.self) { return str.content.text }
+            if seg.is(ExpressionSegmentSyntax.self) { return "{…}" }
             return nil
         }.joined()
-
         return (value, hasInterp)
     }
 

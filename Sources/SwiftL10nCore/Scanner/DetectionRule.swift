@@ -47,20 +47,40 @@ public protocol DetectionRule: Sendable {
     func match(in node: FunctionCallExprSyntax) -> DetectionContext?
 }
 
+// MARK: - PropertyAssignmentRule
+
+/// A rule that detects strings assigned to a named property, e.g. `label.text = "…"`.
+///
+/// The visitor calls `match(propertyName:)` for every assignment expression whose
+/// right-hand side is a string literal.  Return a `DetectionContext` to claim the
+/// assignment, or `nil` to pass.
+public protocol PropertyAssignmentRule: Sendable {
+    var name: String { get }
+    var baseConfidence: Double { get }
+    func match(propertyName: String) -> DetectionContext?
+}
+
 // MARK: - RuleEngine
 
-/// An ordered list of rules applied to every `FunctionCallExprSyntax` in the tree.
+/// An ordered list of rules applied to every function call and property assignment.
 ///
-/// Rules are tried in declaration order; the first match wins.
+/// - `rules` — tried against every `FunctionCallExprSyntax`.
+/// - `assignmentRules` — tried against every `property = "string"` expression.
+///
 /// Pass a custom `RuleEngine` to `StringScanner` to override or extend detection.
 public struct RuleEngine: Sendable {
     public let rules: [any DetectionRule]
+    public let assignmentRules: [any PropertyAssignmentRule]
 
-    public init(rules: [any DetectionRule]) {
+    public init(
+        rules: [any DetectionRule],
+        assignmentRules: [any PropertyAssignmentRule] = []
+    ) {
         self.rules = rules
+        self.assignmentRules = assignmentRules
     }
 
-    /// The default engine used when `StringScanner` is created with no arguments.
+    /// SwiftUI-only rules — the default when `StringScanner` is created with no arguments.
     public static let `default` = RuleEngine(rules: [
         TextViewRule(),
         ButtonRule(),
@@ -72,6 +92,29 @@ public struct RuleEngine: Sendable {
         TextFieldRule(),
         AccessibilityLabelRule(),
     ])
+
+    /// UIKit-only rules (function calls + property assignments).
+    /// Use this for a pure UIKit project: `StringScanner(ruleEngine: .uikit)`.
+    public static let uikit = RuleEngine(
+        rules: [
+            UIButtonSetTitleRule(),
+            UIAlertControllerTitleRule(),
+            UIAlertControllerMessageRule(),
+            UIAlertActionRule(),
+            UIBarButtonItemRule(),
+            UITabBarItemRule(),
+        ],
+        assignmentRules: [
+            UIKitPropertyAssignmentRule(),
+        ]
+    )
+
+    /// SwiftUI + UIKit rules combined.
+    /// Use this for a mixed project: `StringScanner(ruleEngine: .full)`.
+    public static let full = RuleEngine(
+        rules: RuleEngine.default.rules + RuleEngine.uikit.rules,
+        assignmentRules: RuleEngine.uikit.assignmentRules
+    )
 }
 
 // MARK: - Argument Extraction Helper (shared by the visitor)

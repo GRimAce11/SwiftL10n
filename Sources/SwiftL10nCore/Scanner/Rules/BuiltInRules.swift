@@ -150,14 +150,14 @@ public struct AccessibilityLabelRule: DetectionRule {
     }
 }
 
-// MARK: - Shared helpers (file-private)
+// MARK: - Shared helpers (internal — used by BuiltInRules and UIKitRules)
 
 /// `true` when the call is `Identifier(…)` — a direct (non-member) call.
-private func isDirect(_ node: FunctionCallExprSyntax, callee: String) -> Bool {
+func isDirect(_ node: FunctionCallExprSyntax, callee: String) -> Bool {
     node.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == callee
 }
 
 /// Returns the member name for `.foo(…)` calls, or `nil` for non-member calls.
-private func memberName(_ node: FunctionCallExprSyntax) -> String? {
+func memberName(_ node: FunctionCallExprSyntax) -> String? {
     node.calledExpression.as(MemberAccessExprSyntax.self)?.declName.baseName.text
 }

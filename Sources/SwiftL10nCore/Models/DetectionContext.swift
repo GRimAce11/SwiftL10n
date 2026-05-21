@@ -32,6 +32,32 @@ public enum DetectionContext: Sendable, Hashable {
     /// First argument to `Toggle("label", isOn:)`.
     case toggle
 
+    // MARK: UIKit
+
+    /// `label.text = "…"` or `textView.text = "…"`.
+    case uiLabel
+
+    /// `button.setTitle("…", for:)` or `UIBarButtonItem(title: "…")`.
+    case uiButtonTitle
+
+    /// `textField.placeholder = "…"` or `searchBar.placeholder = "…"`.
+    case uiTextFieldPlaceholder
+
+    /// `navigationItem.title = "…"` or `self.title = "…"`.
+    case uiNavigationTitle
+
+    /// `UIAlertController(title: "…", …)`.
+    case uiAlertTitle
+
+    /// `UIAlertController(…, message: "…", …)`.
+    case uiAlertMessage
+
+    /// `UIAlertAction(title: "…", …)` or `UIBarButtonItem(title: "…", …)`.
+    case uiAlertAction
+
+    /// `UITabBarItem(title: "…", …)`.
+    case uiTabBarItem
+
     /// A call site we recognise as UI-facing but haven't given a dedicated case yet.
     /// `callee` is the bare function/method name (e.g. `"sheet"`).
     case unknownUIContext(callee: String)
@@ -50,6 +76,14 @@ extension DetectionContext {
         case .textField:                       return "TextField"
         case .accessibilityLabel:              return "accessibilityLabel"
         case .toggle:                          return "Toggle"
+        case .uiLabel:                         return "UILabel.text"
+        case .uiButtonTitle:                   return "UIButton.setTitle"
+        case .uiTextFieldPlaceholder:          return "UITextField.placeholder"
+        case .uiNavigationTitle:               return "UINavigationItem.title"
+        case .uiAlertTitle:                    return "UIAlertController.title"
+        case .uiAlertMessage:                  return "UIAlertController.message"
+        case .uiAlertAction:                   return "UIAlertAction.title"
+        case .uiTabBarItem:                    return "UITabBarItem.title"
         case .unknownUIContext(let callee):    return callee
         }
     }
@@ -69,6 +103,14 @@ extension DetectionContext {
         case .textField:                       return "Placeholder"
         case .accessibilityLabel:              return "AccessibilityLabel"
         case .toggle:                          return "ToggleLabel"
+        case .uiLabel:                         return "Label"
+        case .uiButtonTitle:                   return "ButtonTitle"
+        case .uiTextFieldPlaceholder:          return "Placeholder"
+        case .uiNavigationTitle:               return "NavigationTitle"
+        case .uiAlertTitle:                    return "AlertTitle"
+        case .uiAlertMessage:                  return "AlertMessage"
+        case .uiAlertAction:                   return "ActionTitle"
+        case .uiTabBarItem:                    return "TabTitle"
         case .unknownUIContext:                return ""
         }
     }
