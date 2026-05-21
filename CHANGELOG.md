@@ -10,6 +10,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.5.1] — 2026-05-21
+
+### Added
+
+- **`ScanPipeline`** — reusable orchestration layer extracted from `ScanCommand`. Takes a `SwiftL10nConfig` + base URL, returns a `PipelineResult` (scannedFiles, namespaces, diagnostics, totalStrings, warningCount, errorCount). Usable programmatically without the CLI.
+- **`GlobMatcher`** — full gitignore-style glob matching: `*` (no slash crossing), `**` (any depth), `?` (single char). Replaces Phase-1 prefix-only exclusion in `ScanPipeline`.
+- **`--format json`** flag on `swiftl10n scan` — serializes the full result to stdout as structured JSON (schema version, stats, diagnostics with codes `SL001`/`SL002`, namespaces with per-string context and confidence). Pipe to `jq` or save as a CI artefact.
+- **`--fail-on`** flag on `swiftl10n scan` — `errors` (default), `warnings` (exit non-zero on any warning or error), `never` (always succeed). Useful for CI ratchets.
+- **29 new tests** — `GlobMatcherTests` (16 cases covering `*`, `**`, `?`, edge cases), `ExclusionMatchingTests` (4 integration cases via `ScanPipeline.excludes`), `ScanPipelineTests` (9 end-to-end cases: multi-file scan, confidence filtering, directory exclusion, glob exclusion). 209 total, 0 failures.
+
+### Changed
+
+- `ScanCommand` is now a thin adapter: config loading + CLI override merging, then delegates to `ScanPipeline` for all scanning work.
+- `CodeGenerator` in `ScanCommand` now reads `enumName` / `tableName` from the resolved config (respects `.swiftl10n.yml` settings).
+
+---
+
 ## [0.5.0] — 2026-05-21
 
 ### Added
@@ -170,7 +187,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.1...HEAD
+[0.5.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.1...0.4.0
