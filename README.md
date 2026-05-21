@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SPM compatible](https://img.shields.io/badge/SwiftPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 
-A fast, accurate SwiftUI string scanner that automates the first step of every localization workflow — finding the strings.
+A fast, accurate SwiftUI and UIKit string scanner that automates the first step of every localization workflow — finding the strings.
 
 ---
 
@@ -14,7 +14,7 @@ A fast, accurate SwiftUI string scanner that automates the first step of every l
 
 SwiftL10n statically analyses your Swift source using SwiftSyntax and detects every hardcoded string that should be localized. It runs entirely at the source level — no simulator, no SourceKit, no runtime.
 
-Feed it a directory; get back a typed list of detected strings with confidence scores, enclosing context, and a generated `Strings` enum scaffold ready to drop into your project.
+Feed it a directory; get back a typed list of detected strings with confidence scores, enclosing context, and a generated `i18n.swift` enum scaffold ready to drop into your project.
 
 ---
 
@@ -26,7 +26,11 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 - **Interpolation awareness** — `Text("Hello \(name)!")` is detected, templated as `"Hello {…}!"`, and flagged with a warning; it is skipped during code generation
 - **Enclosing context** — each string records the surrounding type, property, and function
 - **Namespace inference** — derives logical namespaces from file names (`SettingsView.swift` → `Settings`)
-- **Code generation** — emits a type-safe `enum Strings { enum Settings { … } }` scaffold
+- **Code generation** — emits a type-safe `enum i18n { enum Settings { … } }` scaffold using `String(localized:table:bundle:)` (iOS 16+ / macOS 13+)
+- **Common string extraction** — strings shared across multiple files are automatically lifted into `i18n.Common`
+- **Project config file** — `.swiftl10n.yml` at the project root; run `swiftl10n init` to create one
+- **Incremental scanning** — SHA-256 per-file hashing skips unchanged files on subsequent runs (`incremental: true` in config)
+- **JSON output** — `--format json` produces a structured, versioned schema for CI artefacts and downstream tooling
 - **Extensible** — add custom detection rules by conforming to `DetectionRule`
 - **Swift 6 ready** — strict concurrency enforced, fully `Sendable`, zero data races
 
@@ -55,7 +59,7 @@ Xcode shows two products in the picker. **Only add `SwiftL10nCore`:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.1.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.5.0"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -125,7 +129,7 @@ Run the app once. The Xcode console prints every detected string, highlights sha
    "Save"  ← Home, Profile, Settings
 
 ✓ 10 string(s) found · 4 namespace(s) · 0 warning(s)
-✓ Written → .../Sources/YourApp/Generated/i18n.swift
+✓ Created → .../Sources/YourApp/Generated/i18n.swift
 ```
 
 > **Sandbox error?** If you see *"You don't have permission to save the file…"*:
@@ -213,22 +217,6 @@ extension i18n {
 
     }
 }
-
-extension i18n {
-    enum Home {
-
-        /// "Welcome Back"
-        static func welcomeBack() -> String {
-            String(
-                localized: "Welcome Back",
-                table: General.table,
-                bundle: General.bundle,
-                comment: "Home: Text — Welcome Back"
-            )
-        }
-
-    }
-}
 ```
 
 ---
@@ -261,14 +249,6 @@ Toggle(i18n.Settings.pushNotificationsToggleLabel(), isOn: $on)
 2. Xcode auto-discovers every `String(localized:)` call in your source and populates the catalog — **no manual entry needed**
 3. Add a language: Project → Info → Localizations → **+** → select a language
 4. The new language column appears in `Localizable.xcstrings` — translate each entry there
-
-```
-Localizable.xcstrings
-├── English (Base) — auto-filled from your source code
-├── Spanish        — translate here
-├── French         — translate here
-└── German         — translate here
-```
 
 `String(localized:)` falls back to the base English string at runtime until a translation exists, so it is safe to ship with an empty catalog.
 
@@ -329,15 +309,11 @@ private func scanStrings() async {
     }
     #endif
 }
-// ───────────────────────────────────────────────────────────────────────────
 ```
 
 #### Option B — `SceneDelegate`
 
 ```swift
-import UIKit
-import SwiftL10nCore
-
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(
@@ -353,9 +329,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 #### Option C — Root `UIViewController`
 
 ```swift
-import UIKit
-import SwiftL10nCore
-
 class RootViewController: UIViewController {
 
     override func viewDidLoad() {
@@ -365,72 +338,15 @@ class RootViewController: UIViewController {
 }
 ```
 
-All three options call the same `scanStrings()` function shown in Option A — define it once anywhere in your project.
-
-> **Remove the `Task { await scanStrings() }` line** after `i18n.swift` is generated. You only need it when regenerating after adding new strings.
+> **Remove the `Task { await scanStrings() }` line** after `i18n.swift` is generated.
 >
-> **Sandbox error?** App Sandbox is macOS-only — iOS has no toggle. Run on **Simulator** (not a real device) and the write will succeed without any settings change.
+> **Sandbox error on iOS?** App Sandbox is macOS-only — iOS has no toggle. Run on **Simulator** (not a real device) and the write will succeed without any settings change.
 
 ---
 
-### Scanning a single file
+## CLI
 
-```swift
-let result = StringScanner().scan(
-    source: try! String(contentsOfFile: "/path/to/SettingsView.swift"),
-    filePath: "SettingsView.swift"
-)
-result.detectedStrings.forEach { print("[\($0.context.displayName)] \"\($0.value)\"") }
-```
-
----
-
-> Re-run the `ContentView` any time you add new views to regenerate `i18n.swift`.  
-> For CI enforcement, Xcode Build Phase automation, and custom rules see the [Production Guide](Documentation/ProductionGuide.md).
-
----
-
-## Requirements
-
-| Platform | Minimum |
-|----------|---------|
-| Swift | 6.0+ |
-| Xcode | 16+ |
-| macOS | 13+ |
-| iOS | 13+ |
-| tvOS | 13+ |
-| watchOS | 6+ |
-| visionOS | 1+ |
-
----
-
-## Installation
-
-This package ships two products. You only ever need one of them depending on how you want to use it.
-
-### `SwiftL10nCore` — library for your app
-
-Add to your `Package.swift`:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.1.0"),
-],
-targets: [
-    .target(
-        name: "YourApp",
-        dependencies: [
-            .product(name: "SwiftL10nCore", package: "SwiftL10n"),  // ← only this
-        ]
-    ),
-]
-```
-
-Or in Xcode: **File → Add Package Dependencies** → enter the URL → when the product picker appears, tick **only `SwiftL10nCore`** and leave `swiftl10n` unticked.
-
-### `swiftl10n` — optional CLI tool (terminal only, never add to an app)
-
-If you prefer to run scans from the terminal instead of calling the API from code:
+Install once, run from the project root:
 
 ```bash
 git clone https://github.com/GRimAce11/SwiftL10n.git
@@ -439,47 +355,179 @@ swift build -c release
 cp .build/release/swiftl10n /usr/local/bin/
 ```
 
+### Commands
+
+#### `swiftl10n init` — create a config file
+
 ```bash
-swiftl10n scan Sources/ --output Sources/Generated/i18n.swift
+swiftl10n init
 ```
 
-The CLI is a separate executable that wraps `SwiftL10nCore`. It is never imported into your app — if you see it in Xcode's product picker, leave it unticked.
+Writes a commented `.swiftl10n.yml` to the current directory:
+
+```yaml
+# SwiftL10n configuration — https://github.com/GRimAce11/SwiftL10n
+sources:
+  - Sources
+
+output:
+  path: Sources/Generated/i18n.swift
+  enum_name: i18n
+  table_name: Localizable
+
+minimum_confidence: 0.85
+
+exclude: []
+
+incremental: false
+```
+
+Options:
+
+```bash
+swiftl10n init --sources Sources/App --output App/Generated/i18n.swift
+swiftl10n init --min-confidence 0.9
+swiftl10n init --force   # overwrite existing .swiftl10n.yml
+```
 
 ---
 
-## Usage
+#### `swiftl10n scan` — detect strings
 
-### CLI
+With a config file present, run with no arguments:
 
 ```bash
-# Scan a directory (recursive)
+swiftl10n scan
+```
+
+Or pass a path directly (overrides `sources` in config):
+
+```bash
 swiftl10n scan Sources/
-
-# Filter noisy output — show only high-confidence strings
-swiftl10n scan Sources/ --min-confidence 0.9
-
-# Print every string with its location and context
-swiftl10n scan Sources/ --verbose
-
-# Suppress everything except errors
-swiftl10n scan Sources/ --quiet
 ```
 
-Example output:
+**Common flags:**
 
+| Flag | Description |
+|---|---|
+| `--output <path>` | Write generated `i18n.swift` to this path (overrides config) |
+| `--min-confidence <0–1>` | Ignore strings below this score (overrides config) |
+| `--verbose` | Print every detected string with location and context |
+| `--quiet` | Suppress all output except errors |
+| `--config <path>` | Load config from a specific file instead of auto-discovering |
+| `--format json` | Output structured JSON to stdout instead of console text |
+| `--fail-on warnings` | Exit non-zero on any warning (default: errors only) |
+| `--fail-on never` | Always exit 0 (useful for advisory-only CI steps) |
+
+**Examples:**
+
+```bash
+# Scan and generate, verbose
+swiftl10n scan --verbose --output Sources/Generated/i18n.swift
+
+# CI: fail the build if any warnings are found
+swiftl10n scan --fail-on warnings
+
+# Structured JSON output — pipe to jq or save as artefact
+swiftl10n scan --format json | jq '.scanned'
+swiftl10n scan --format json > scan-results.json
 ```
-Found 12 localizable string(s) across 3 namespace(s).
-  Home: 4 string(s) (HomeView.swift)
-  Settings: 6 string(s) (SettingsView.swift)
-  Onboarding: 2 string(s) (OnboardingView.swift)
-warning: "Hello \(name)!" — Interpolated string; review before localising (SettingsView.swift:14)
+
+**JSON output schema:**
+
+```json
+{
+  "schema_version": "1",
+  "swiftl10n_version": "0.5.2",
+  "scanned": {
+    "files": 5,
+    "strings": 42,
+    "namespaces": 3,
+    "warnings": 1,
+    "errors": 0,
+    "cache_hits": 4
+  },
+  "diagnostics": [
+    {
+      "code": "SL001",
+      "severity": "warning",
+      "message": "Interpolated string in localizable context — no API will be generated: \"Hello {…}!\"",
+      "file": "HomeView.swift",
+      "line": 14
+    }
+  ],
+  "namespaces": [
+    {
+      "name": "Settings",
+      "source_file": "SettingsView.swift",
+      "strings": [
+        {
+          "value": "Delete Account",
+          "context": "Button",
+          "confidence": 0.97,
+          "has_interpolation": false,
+          "file": "SettingsView.swift",
+          "line": 22
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ---
 
-### Programmatic API
+### CLI configuration (`.swiftl10n.yml`)
 
-#### Scan a source string
+When `swiftl10n scan` is run, it looks for `.swiftl10n.yml` by walking up from the current directory. It stops searching when it reaches a project root (`Package.swift`, `.git`, `.xcworkspace`) or your home directory.
+
+All fields are optional — any omitted field uses its default.
+
+```yaml
+# Directories to scan, relative to this file.
+sources:
+  - Sources
+
+# Generated output.
+output:
+  path: Sources/Generated/i18n.swift
+  enum_name: i18n          # root enum name in the generated file
+  table_name: Localizable  # .strings table passed to String(localized:)
+
+# Strings below this score are ignored (0.0–1.0).
+minimum_confidence: 0.85
+
+# Paths or glob patterns to exclude.
+# Supports: exact paths, *.ext, **/pattern
+exclude:
+  - Sources/Generated
+  - "**/*.generated.swift"
+  - "**/*.mock.swift"
+
+# Skip re-scanning files whose content hasn't changed.
+# Cache is stored at .build/swiftl10n-cache.json.
+incremental: true
+```
+
+**CLI flags always override config values.** For example, `swiftl10n scan --min-confidence 0.95` ignores `minimum_confidence` in the config for that run.
+
+---
+
+### Incremental scanning
+
+When `incremental: true` is set, `swiftl10n scan` computes a SHA-256 hash of each file before scanning. If the hash matches the cached value, the file is skipped entirely — no SwiftSyntax parse, no AST walk.
+
+```
+Found 42 string(s) across 8 namespace(s) in 23 file(s) (22 cached).
+```
+
+The cache is stored at `.build/swiftl10n-cache.json` (already gitignored in SPM projects). It is invalidated automatically when a file changes or when the library version bumps.
+
+---
+
+## Programmatic API
+
+### Scan a source string
 
 ```swift
 import SwiftL10nCore
@@ -498,57 +546,68 @@ for string in result.detectedStrings {
 }
 ```
 
-#### Scan a file on disk
+### Scan a file on disk
 
 ```swift
 let result = try scanner.scan(filePath: "/path/to/SettingsView.swift")
 ```
 
-#### Check for warnings and errors
+### Check diagnostics
 
 ```swift
 for diagnostic in result.diagnostics {
     print("[\(diagnostic.severity)] \(diagnostic.message)")
 }
 
-let warnings = result.diagnostics.filter { $0.severity == .warning }
+let warnings     = result.diagnostics.filter { $0.severity == .warning }
 let interpolated = result.detectedStrings.filter(\.hasInterpolation)
 ```
 
-#### Namespace inference + code generation
+### Run the full pipeline programmatically
+
+`ScanPipeline` is the same engine `swiftl10n scan` uses internally:
 
 ```swift
 import SwiftL10nCore
 
-let inferrer = NamespaceInferrer()
-let namespaces = inferrer.infer(from: [
-    ("SettingsView.swift", result.detectedStrings),
-])
+let config   = SwiftL10nConfig(sources: ["Sources"], minimumConfidence: 0.85)
+let pipeline = ScanPipeline(config: config, baseURL: projectRootURL)
+let result   = try pipeline.run()
+
+print("\(result.totalStrings) strings in \(result.namespaces.count) namespace(s)")
+print("\(result.cacheHits) file(s) served from cache")
+
+let code = CodeGenerator().generate(namespaces: result.namespaces)
+```
+
+### Namespace inference + code generation
+
+```swift
+import SwiftL10nCore
+
+let inferrer   = NamespaceInferrer()
+let namespaces = inferrer.infer(from: [("SettingsView.swift", result.detectedStrings)])
 
 let output = CodeGenerator().generate(namespaces: namespaces)
 print(output)
 ```
 
-Generated output:
+Output:
 
 ```swift
-// Auto-generated by SwiftL10n — do not edit manually.
-
-enum Strings {
-
+extension i18n {
     enum Settings {
-        /// "Settings"
-        static let settingsNavigationTitle = NSLocalizedString(
-            "Settings", comment: "Settings.settingsNavigationTitle"
-        )
-        /// "Profile"
-        static let profileLabel = NSLocalizedString(
-            "Profile", comment: "Settings.profileLabel"
-        )
+
         /// "Delete Account"
-        static let deleteAccountButtonTitle = NSLocalizedString(
-            "Delete Account", comment: "Settings.deleteAccountButtonTitle"
-        )
+        static func deleteAccountButtonTitle() -> String {
+            String(
+                localized: "Delete Account",
+                table: General.table,
+                bundle: General.bundle,
+                comment: "Settings: Button — Delete Account"
+            )
+        }
+
     }
 }
 ```
@@ -557,7 +616,7 @@ enum Strings {
 
 ## Detection rules
 
-### SwiftUI — `RuleEngine.default`
+### SwiftUI
 
 | Call site | `DetectionContext` | Example |
 |---|---|---|
@@ -567,7 +626,7 @@ enum Strings {
 | `Toggle("…", isOn:)` | `.toggle` | `Toggle("Dark Mode", isOn: $enabled)` |
 | `TextField("…", text:)` | `.textField` | `TextField("Email", text: $email)` |
 | `.navigationTitle("…")` | `.navigationTitle` | `.navigationTitle("Home")` |
-| `.navigationBarTitle("…")` | `.navigationTitle` | `.navigationBarTitle("Profile")` (deprecated) |
+| `.navigationBarTitle("…")` | `.navigationTitle` | `.navigationBarTitle("Profile")` |
 | `.alert("…", isPresented:)` | `.alert` | `.alert("Are you sure?", isPresented: $shown) {}` |
 | `.confirmationDialog("…", isPresented:)` | `.confirmationDialog` | `.confirmationDialog("Choose", isPresented: $shown) {}` |
 | `.accessibilityLabel("…")` | `.accessibilityLabel` | `.accessibilityLabel("Close button")` |
@@ -644,41 +703,101 @@ SwiftL10n/
 ├── Sources/
 │   ├── swiftl10n/                     # CLI executable
 │   │   ├── EntryPoint.swift
-│   │   └── Commands/ScanCommand.swift
+│   │   ├── Commands/
+│   │   │   ├── ScanCommand.swift      # Thin adapter over ScanPipeline
+│   │   │   └── InitCommand.swift      # swiftl10n init
+│   │   ├── Config/
+│   │   │   └── ConfigLoader.swift     # YAML discovery + parsing (Yams)
+│   │   └── Output/
+│   │       └── JSONReporter.swift     # --format json serialiser
 │   └── SwiftL10nCore/                 # Library target
 │       ├── Scanner/
 │       │   ├── StringScanner.swift        # Entry point — parses + runs pipeline
 │       │   ├── DetectionRule.swift        # Protocol + RuleEngine
-│       │   ├── Rules/BuiltInRules.swift   # 9 built-in rules
-│       │   ├── FalsePositiveFilter.swift  # Deterministic exclusions
-│       │   ├── ConfidenceScorer.swift     # 0.0–1.0 scoring
-│       │   └── ContextExtractor.swift     # Enclosing type/property/function
+│       │   ├── Rules/BuiltInRules.swift   # SwiftUI rules
+│       │   ├── Rules/UIKitRules.swift     # UIKit rules
+│       │   ├── FalsePositiveFilter.swift
+│       │   ├── ConfidenceScorer.swift
+│       │   └── ContextExtractor.swift
 │       ├── Models/
-│       │   ├── DetectedString.swift
-│       │   ├── DetectionContext.swift
-│       │   ├── EnclosingContext.swift
+│       │   ├── DetectedString.swift       # Sendable + Codable
+│       │   ├── DetectionContext.swift     # Sendable + Codable (custom)
+│       │   ├── EnclosingContext.swift     # Sendable + Codable
 │       │   ├── Namespace.swift
-│       │   └── Diagnostic.swift
+│       │   └── Diagnostic.swift          # Sendable + Codable
+│       ├── Config/
+│       │   └── SwiftL10nConfig.swift      # Project config model
+│       ├── Pipeline/
+│       │   ├── ScanPipeline.swift         # Reusable scan orchestration
+│       │   ├── GlobMatcher.swift          # *, **, ? pattern matching
+│       │   └── IncrementalScanCache.swift # CryptoKit SHA-256 cache
 │       ├── NamespaceInferrer/
-│       │   └── NamespaceInferrer.swift
 │       ├── CodeGen/
 │       │   └── CodeGenerator.swift
+│       ├── Common/
+│       │   └── CommonStringExtractor.swift
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 130 tests across 10 files
+    └── SwiftL10nCoreTests/            # 223 tests across 15 files
 ```
 
 ### Detection pipeline
 
-For every `FunctionCallExprSyntax` node in the syntax tree:
+For every `FunctionCallExprSyntax` and `SequenceExprSyntax` (property assignments) in the syntax tree:
 
-1. **Rule matching** — rules are tried in order; first match wins
+1. **Rule matching** — rules are tried in order; UIAlertController matches both its title and message rules
 2. **Argument extraction** — `ArgumentSelector.firstUnlabeled` skips opt-out forms like `Text(verbatim:)`
 3. **False-positive filtering** — exclusions are applied; a `.note` diagnostic is emitted if filtered
 4. **Context extraction** — parent chain is walked to capture enclosing type, property, function
 5. **Confidence scoring** — base confidence (per rule) adjusted by content and context deltas
 6. **Interpolation handling** — `\(…)` segments replaced with `{…}`, `hasInterpolation` set, `.warning` emitted
+
+---
+
+## Requirements
+
+| | Minimum |
+|---|---|
+| Swift | 6.0+ |
+| Xcode | 16+ |
+| macOS | 13+ |
+| iOS | 13+ |
+| tvOS | 13+ |
+| watchOS | 6+ |
+| visionOS | 1+ |
+
+---
+
+## Installation
+
+### `SwiftL10nCore` — library for your app
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.5.0"),
+],
+targets: [
+    .target(
+        name: "YourApp",
+        dependencies: [
+            .product(name: "SwiftL10nCore", package: "SwiftL10n"),
+        ]
+    ),
+]
+```
+
+Or in Xcode: **File → Add Package Dependencies** → enter the URL → tick only **`SwiftL10nCore`**.
+
+### `swiftl10n` — CLI tool
+
+```bash
+git clone https://github.com/GRimAce11/SwiftL10n.git
+cd SwiftL10n
+swift build -c release
+cp .build/release/swiftl10n /usr/local/bin/
+swiftl10n --version
+```
 
 ---
 
@@ -688,12 +807,10 @@ For every `FunctionCallExprSyntax` node in the syntax tree:
 swift test
 ```
 
-The test suite covers:
-
 | File | What it tests |
 |---|---|
 | `ScannerTests.swift` | End-to-end scanner behaviour for every rule |
-| `DetectionRuleTests.swift` | Each rule in isolation via `FunctionCallCollector` |
+| `DetectionRuleTests.swift` | Each rule in isolation |
 | `FalsePositiveFilterTests.swift` | Every exclusion reason + valid pass-throughs |
 | `ConfidenceScorerTests.swift` | Scoring deltas, clamping, context boosts |
 | `ContextExtractorTests.swift` | struct/class/extension/function/property extraction |
@@ -701,6 +818,13 @@ The test suite covers:
 | `FixtureTests.swift` | Integration tests on realistic SwiftUI fixtures |
 | `NamespaceInferrerTests.swift` | Suffix stripping, collision handling |
 | `DiagnosticsTests.swift` | Severity filtering, formatting |
+| `UIKitDetectionTests.swift` | All 12 UIKit patterns |
+| `CodeGeneratorTests.swift` | Deduplication, decorator stripping |
+| `ConfigTests.swift` | YAML decode, round-trip, defaults |
+| `ConfigLoaderTests.swift` | Discovery walking, load errors, validation |
+| `GlobMatcherTests.swift` | `*`, `**`, `?`, edge cases |
+| `ScanPipelineTests.swift` | Multi-file scan, exclusion, confidence filter |
+| `IncrementalScanCacheTests.swift` | SHA-256 hashing, cache hit/miss, round-trip, integration |
 
 ---
 
