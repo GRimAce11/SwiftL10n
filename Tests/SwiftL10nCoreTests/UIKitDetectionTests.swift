@@ -3,7 +3,7 @@ import XCTest
 
 final class UIKitDetectionTests: XCTestCase {
 
-    private let scanner = StringScanner(ruleEngine: .full)
+    private let scanner = StringScanner()
 
     // MARK: - UILabel / UITextView
 
@@ -116,37 +116,17 @@ final class UIKitDetectionTests: XCTestCase {
         XCTAssertEqual(result[0].context, .uiTabBarItem)
     }
 
-    // MARK: - RuleEngine presets
+    // MARK: - Default engine detects both SwiftUI and UIKit
 
-    func testDefaultEngineDoesNotDetectUIKitPatterns() {
-        let swiftuiScanner = StringScanner(ruleEngine: .default)
-        let result = swiftuiScanner.scan(
-            source: #"label.text = "Hello""#,
-            filePath: "t.swift"
-        )
-        XCTAssertEqual(result.detectedStrings.count, 0,
-            "Default (SwiftUI-only) engine must not detect UIKit property assignments")
-    }
-
-    func testUIKitEngineDoesNotDetectSwiftUIPatterns() {
-        let uikitScanner = StringScanner(ruleEngine: .uikit)
-        let result = uikitScanner.scan(
-            source: #"Text("Hello World")"#,
-            filePath: "t.swift"
-        )
-        XCTAssertEqual(result.detectedStrings.count, 0,
-            "UIKit-only engine must not detect SwiftUI Text()")
-    }
-
-    func testFullEngineDetectsBothFrameworks() {
+    func testDefaultEngineDetectsSwiftUIAndUIKit() {
         let source = """
         Text("SwiftUI Label")
         label.text = "UIKit Label"
         """
-        let result = StringScanner(ruleEngine: .full).scan(source: source, filePath: "t.swift")
+        let result = StringScanner().scan(source: source, filePath: "t.swift")
         let contexts = Set(result.detectedStrings.map(\.context))
-        XCTAssertTrue(contexts.contains(.textView))
-        XCTAssertTrue(contexts.contains(.uiLabel))
+        XCTAssertTrue(contexts.contains(.textView),  "Default engine must detect SwiftUI Text()")
+        XCTAssertTrue(contexts.contains(.uiLabel),   "Default engine must detect UIKit label.text")
     }
 
     // MARK: - Full UIKit view
@@ -174,7 +154,7 @@ final class UIKitDetectionTests: XCTestCase {
             }
         }
         """
-        let result = StringScanner(ruleEngine: .full).scan(source: source, filePath: "ProfileViewController.swift")
+        let result = StringScanner().scan(source: source, filePath: "ProfileViewController.swift")
         let values = result.detectedStrings.map(\.value)
 
         XCTAssertTrue(values.contains("Profile"))

@@ -12,41 +12,39 @@ import Foundation
 ///     let projectPath = "/path/to/Sources/MyApp"   // ← change only this
 ///     try? await generateStrings(
 ///         sourcesPath: projectPath,
-///         outputPath:  "\(projectPath)/Generated/Strings.swift"
+///         outputPath:  "\(projectPath)/Generated/i18n.swift"
 ///     )
 /// }
 /// ```
 ///
 /// - Parameters:
 ///   - sourcesPath: Folder containing your `.swift` view files (scanned recursively).
-///   - outputPath:  Where `Strings.swift` will be written. Parent folder is created if needed.
+///   - outputPath:  Where `i18n.swift` will be written. Parent folder is created if needed.
 ///   - minimumConfidence: Ignore strings below this score. Default `0.85`.
 /// - Returns: Summary — string count, namespace count, warning count, output URL.
 @discardableResult
 public func generateStrings(
     sourcesPath: String,
     outputPath: String,
-    minimumConfidence: Double = 0.85,
-    ruleEngine: RuleEngine = .full     // detects SwiftUI + UIKit by default
+    minimumConfidence: Double = 0.85
 ) async throws -> StringsGenerator.Result {
     try await StringsGenerator(
         sourcesPath: sourcesPath,
         outputPath: outputPath,
-        minimumConfidence: minimumConfidence,
-        ruleEngine: ruleEngine
+        minimumConfidence: minimumConfidence
     ).run()
 }
 
 // MARK: -
 
-/// Scans a source directory and writes a `Strings.swift` enum in one call.
+/// Scans a source directory and writes a `i18n.swift` enum in one call.
 ///
 /// Designed to be called with `await` from any SwiftUI view during development:
 ///
 /// ```swift
 /// let result = try await StringsGenerator(
 ///     sourcesPath: "/path/to/Sources/MyApp",
-///     outputPath:  "/path/to/Sources/MyApp/Generated/Strings.swift"
+///     outputPath:  "/path/to/Sources/MyApp/Generated/i18n.swift"
 /// ).run()
 /// ```
 public struct StringsGenerator: Sendable {
@@ -60,7 +58,7 @@ public struct StringsGenerator: Sendable {
         public let namespaceCount: Int
         /// Number of interpolated strings that need manual attention.
         public let warningCount: Int
-        /// File URL of the written `Strings.swift`.
+        /// File URL of the written `i18n.swift`.
         public let outputURL: URL
     }
 
@@ -108,16 +106,14 @@ public struct StringsGenerator: Sendable {
 
     /// - Parameters:
     ///   - sourcesPath: Absolute path to the folder containing your `.swift` view files.
-    ///   - outputPath:  Absolute path where `Strings.swift` will be written.
+    ///   - outputPath:  Absolute path where `i18n.swift` will be written.
     ///                  The parent directory is created automatically if it does not exist.
     ///   - minimumConfidence: Strings below this threshold are ignored. Default `0.85`.
-    ///   - ruleEngine: Detection rules to apply. Default `.full` (SwiftUI + UIKit).
-    ///                 Pass `.default` for SwiftUI-only or `.uikit` for UIKit-only.
     public init(
         sourcesPath: String,
         outputPath: String,
         minimumConfidence: Double = 0.85,
-        ruleEngine: RuleEngine = .full
+        ruleEngine: RuleEngine = .default
     ) {
         self.sourcesURL = URL(fileURLWithPath: sourcesPath)
         self.outputURL  = URL(fileURLWithPath: outputPath)

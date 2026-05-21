@@ -19,16 +19,10 @@ public enum ArgumentSelector: Sendable {
 
 // MARK: - DetectionRule
 
-/// A rule that recognises one family of SwiftUI localizable call sites.
-///
-/// Rules are composable and independently testable.  Adding UIKit support in a
-/// future phase means creating new rule types — existing rules remain untouched.
+/// A rule that recognises one localizable call site (SwiftUI or UIKit).
 ///
 /// ### Conformance contract
 /// - `match(in:)` must be **pure** — no side effects, no mutation.
-/// - Rules should be **exclusive**: a call site matches at most one rule.
-///   The engine breaks on first match, so rule order matters only for ambiguous
-///   cases (which the built-in set avoids by checking exact callee names).
 public protocol DetectionRule: Sendable {
     /// Short identifier used in diagnostic messages and debug output.
     var name: String { get }
@@ -62,12 +56,19 @@ public protocol PropertyAssignmentRule: Sendable {
 
 // MARK: - RuleEngine
 
-/// An ordered list of rules applied to every function call and property assignment.
+/// Ordered list of rules applied to every function call and property assignment.
 ///
-/// - `rules` — tried against every `FunctionCallExprSyntax`.
-/// - `assignmentRules` — tried against every `property = "string"` expression.
+/// The default engine detects strings from both SwiftUI and UIKit — no configuration needed.
+/// Pass a custom `RuleEngine` only if you need to add your own rules.
 ///
-/// Pass a custom `RuleEngine` to `StringScanner` to override or extend detection.
+/// ```swift
+/// // Add a custom rule on top of everything built-in
+/// let engine = RuleEngine(
+///     rules: RuleEngine.default.rules + [MySheetTitleRule()],
+///     assignmentRules: RuleEngine.default.assignmentRules
+/// )
+/// let scanner = StringScanner(ruleEngine: engine)
+/// ```
 public struct RuleEngine: Sendable {
     public let rules: [any DetectionRule]
     public let assignmentRules: [any PropertyAssignmentRule]
@@ -80,23 +81,20 @@ public struct RuleEngine: Sendable {
         self.assignmentRules = assignmentRules
     }
 
-    /// SwiftUI-only rules — the default when `StringScanner` is created with no arguments.
-    public static let `default` = RuleEngine(rules: [
-        TextViewRule(),
-        ButtonRule(),
-        LabelViewRule(),
-        ToggleRule(),
-        NavigationTitleRule(),
-        AlertRule(),
-        ConfirmationDialogRule(),
-        TextFieldRule(),
-        AccessibilityLabelRule(),
-    ])
-
-    /// UIKit-only rules (function calls + property assignments).
-    /// Use this for a pure UIKit project: `StringScanner(ruleEngine: .uikit)`.
-    public static let uikit = RuleEngine(
+    /// Detects strings from SwiftUI and UIKit — used automatically by `StringScanner()`.
+    public static let `default` = RuleEngine(
         rules: [
+            // SwiftUI
+            TextViewRule(),
+            ButtonRule(),
+            LabelViewRule(),
+            ToggleRule(),
+            NavigationTitleRule(),
+            AlertRule(),
+            ConfirmationDialogRule(),
+            TextFieldRule(),
+            AccessibilityLabelRule(),
+            // UIKit function calls
             UIButtonSetTitleRule(),
             UIAlertControllerTitleRule(),
             UIAlertControllerMessageRule(),
@@ -105,15 +103,9 @@ public struct RuleEngine: Sendable {
             UITabBarItemRule(),
         ],
         assignmentRules: [
+            // UIKit property assignments (label.text = "…", title = "…", etc.)
             UIKitPropertyAssignmentRule(),
         ]
-    )
-
-    /// SwiftUI + UIKit rules combined.
-    /// Use this for a mixed project: `StringScanner(ruleEngine: .full)`.
-    public static let full = RuleEngine(
-        rules: RuleEngine.default.rules + RuleEngine.uikit.rules,
-        assignmentRules: RuleEngine.uikit.assignmentRules
     )
 }
 

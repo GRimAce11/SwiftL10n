@@ -20,7 +20,7 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 
 ## Features
 
-- **9 detection rules** out of the box — `Text`, `Button`, `Label`, `Toggle`, `TextField`, `.navigationTitle`, `.alert`, `.confirmationDialog`, `.accessibilityLabel`
+- **15 detection rules** out of the box — SwiftUI and UIKit detected automatically, no configuration needed
 - **Smart false-positive prevention** — SF Symbol names, URLs, file paths, reverse-DNS keys, `snake_case`, `camelCase`, and `SCREAMING_CASE` identifiers are all filtered out
 - **Confidence scoring** — every result carries a deterministic `0.0–1.0` score adjusted for string content and enclosing SwiftUI context
 - **Interpolation awareness** — `Text("Hello \(name)!")` is detected, templated as `"Hello {…}!"`, and flagged with a warning; it is skipped during code generation
@@ -34,7 +34,7 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 
 ## Quick Start
 
-Add the package, paste the `ContentView` below, change two paths, run — `Strings.swift` is generated automatically.
+Add the package, paste the `ContentView` below, change two paths, run — `i18n.swift` is generated automatically.
 
 ### 1. Add the package
 
@@ -85,14 +85,14 @@ struct ContentView: View {
 
 private func scanStrings() async {
     #if DEBUG && !targetEnvironment(simulator) && !os(macOS)
-    print("SwiftL10n: skipped — run on Simulator or macOS to generate Strings.swift")
+    print("SwiftL10n: skipped — run on Simulator or macOS to generate i18n.swift")
     #elseif DEBUG
     let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"  // ← change only this
 
     do {
         let result = try await generateStrings(
             sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/Strings.swift"
+            outputPath:  "\(projectPath)/Generated/i18n.swift"
         )
         print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
     } catch {
@@ -125,7 +125,7 @@ Run the app once. The Xcode console prints every detected string, highlights sha
    "Save"  ← Home, Profile, Settings
 
 ✓ 10 string(s) found · 4 namespace(s) · 0 warning(s)
-✓ Written → .../Sources/YourApp/Generated/Strings.swift
+✓ Written → .../Sources/YourApp/Generated/i18n.swift
 ```
 
 > **Sandbox error?** If you see *"You don't have permission to save the file…"*:
@@ -147,14 +147,14 @@ YourApp/
         ├── HomeView.swift
         ├── SettingsView.swift
         └── Generated/
-            └── Strings.swift   ← created automatically
+            └── i18n.swift   ← created automatically
 ```
 
-**Drag `Generated/Strings.swift` into your Xcode Project Navigator** and tick your app target — done.
+**Drag `Generated/i18n.swift` into your Xcode Project Navigator** and tick your app target — done.
 
 ---
 
-### 3. What `Generated/Strings.swift` looks like
+### 3. What `Generated/i18n.swift` looks like
 
 Strings shared across multiple files are automatically lifted into `i18n.Common` — generated once, usable everywhere.
 
@@ -278,14 +278,6 @@ Localizable.xcstrings
 
 UIKit projects use different entry points but the same `scanStrings()` function. The only extra step compared to SwiftUI is passing `ruleEngine: .uikit` (or `.full` for mixed projects) to `StringsGenerator`.
 
-#### Choose your rule engine
-
-| Project type | Parameter |
-|---|---|
-| Pure SwiftUI | `StringsGenerator(…)` — default, no parameter needed |
-| Pure UIKit | `StringsGenerator(…, ruleEngine: .uikit)` |
-| SwiftUI + UIKit mixed | `StringsGenerator(…, ruleEngine: .full)` |
-
 #### What UIKit patterns are detected
 
 | Pattern | Context |
@@ -322,15 +314,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // ── Paste this function anywhere in your project ───────────────────────────
 private func scanStrings() async {
     #if DEBUG && !targetEnvironment(simulator) && !os(macOS)
-    print("SwiftL10n: skipped — run on Simulator or macOS to generate Strings.swift")
+    print("SwiftL10n: skipped — run on Simulator or macOS to generate i18n.swift")
     #elseif DEBUG
     let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
 
     do {
         let result = try await generateStrings(
             sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/Strings.swift",
-            ruleEngine:  .uikit   // ← .uikit for pure UIKit, .full for SwiftUI + UIKit
+            outputPath:  "\(projectPath)/Generated/i18n.swift"
         )
         print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
     } catch {
@@ -376,7 +367,7 @@ class RootViewController: UIViewController {
 
 All three options call the same `scanStrings()` function shown in Option A — define it once anywhere in your project.
 
-> **Remove the `Task { await scanStrings() }` line** after `Strings.swift` is generated. You only need it when regenerating after adding new strings.
+> **Remove the `Task { await scanStrings() }` line** after `i18n.swift` is generated. You only need it when regenerating after adding new strings.
 >
 > **Sandbox error?** App Sandbox is macOS-only — iOS has no toggle. Run on **Simulator** (not a real device) and the write will succeed without any settings change.
 
@@ -394,7 +385,7 @@ result.detectedStrings.forEach { print("[\($0.context.displayName)] \"\($0.value
 
 ---
 
-> Re-run the `ContentView` any time you add new views to regenerate `Strings.swift`.  
+> Re-run the `ContentView` any time you add new views to regenerate `i18n.swift`.  
 > For CI enforcement, Xcode Build Phase automation, and custom rules see the [Production Guide](Documentation/ProductionGuide.md).
 
 ---
@@ -449,7 +440,7 @@ cp .build/release/swiftl10n /usr/local/bin/
 ```
 
 ```bash
-swiftl10n scan Sources/ --output Sources/Generated/Strings.swift
+swiftl10n scan Sources/ --output Sources/Generated/i18n.swift
 ```
 
 The CLI is a separate executable that wraps `SwiftL10nCore`. It is never imported into your app — if you see it in Xcode's product picker, leave it unticked.

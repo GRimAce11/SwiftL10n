@@ -119,11 +119,15 @@ final class DetectionRuleTests: XCTestCase {
     // MARK: - RuleEngine default
 
     func testDefaultEngineContainsAllBuiltInRules() {
-        XCTAssertEqual(RuleEngine.default.rules.count, 9)
+        // 9 SwiftUI + 6 UIKit function-call rules
+        XCTAssertEqual(RuleEngine.default.rules.count, 15)
+        // 1 UIKit property-assignment rule
+        XCTAssertEqual(RuleEngine.default.assignmentRules.count, 1)
     }
 
     func testDefaultEngineRuleNames() {
         let names = Set(RuleEngine.default.rules.map(\.name))
+        // SwiftUI
         XCTAssertTrue(names.contains("TextViewRule"))
         XCTAssertTrue(names.contains("ButtonRule"))
         XCTAssertTrue(names.contains("LabelViewRule"))
@@ -133,6 +137,13 @@ final class DetectionRuleTests: XCTestCase {
         XCTAssertTrue(names.contains("ConfirmationDialogRule"))
         XCTAssertTrue(names.contains("TextFieldRule"))
         XCTAssertTrue(names.contains("AccessibilityLabelRule"))
+        // UIKit
+        XCTAssertTrue(names.contains("UIButtonSetTitleRule"))
+        XCTAssertTrue(names.contains("UIAlertControllerTitleRule"))
+        XCTAssertTrue(names.contains("UIAlertControllerMessageRule"))
+        XCTAssertTrue(names.contains("UIAlertActionRule"))
+        XCTAssertTrue(names.contains("UIBarButtonItemRule"))
+        XCTAssertTrue(names.contains("UITabBarItemRule"))
     }
 
     // MARK: - Helpers
