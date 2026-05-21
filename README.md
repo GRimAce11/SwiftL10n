@@ -34,7 +34,7 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 
 ## Quick Start
 
-Add the package, create one file at the root of your project, change two paths, run — done.
+Add the package, paste the `ContentView` below, change two paths, run — `Strings.swift` is generated automatically.
 
 ### 1. Add the package
 
@@ -59,94 +59,83 @@ targets: [
 
 ---
 
-### 2. Create `ScanStrings.swift` at the root of your project
-
-Your project layout will look like this after this step:
-
-```
-YourApp/                        ← project root
-├── YourApp.xcodeproj
-├── Sources/
-│   └── YourApp/
-│       ├── HomeView.swift
-│       ├── SettingsView.swift
-│       └── Generated/
-│           └── Strings.swift   ← auto-created by the script
-└── ScanStrings.swift           ← create this file now
-```
-
-Create `ScanStrings.swift` at the project root and paste this entire snippet. **Change only the two paths at the top:**
+### 2. Replace your `ContentView` with this — change the two paths, run once
 
 ```swift
+import SwiftUI
 import SwiftL10nCore
-import Foundation
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CHANGE THESE TWO PATHS
-// sourcesPath → folder containing all your .swift view files
-// outputPath  → where you want Strings.swift written (must be inside your target)
-// ─────────────────────────────────────────────────────────────────────────────
-let sourcesPath = "/Users/you/Developer/YourApp/Sources/YourApp"
-let outputPath  = "/Users/you/Developer/YourApp/Sources/YourApp/Generated/Strings.swift"
-// ─────────────────────────────────────────────────────────────────────────────
+struct ContentView: View {
 
-// Collect every .swift file under sourcesPath recursively
-let enumerator = FileManager.default.enumerator(
-    at: URL(fileURLWithPath: sourcesPath),
-    includingPropertiesForKeys: nil,
-    options: [.skipsHiddenFiles]
-)!
+    // ── Change these two lines ────────────────────────────────────────────
+    let sourcesPath = "/Users/you/Developer/YourApp/Sources/YourApp"
+    let outputPath  = "/Users/you/Developer/YourApp/Sources/YourApp/Generated/Strings.swift"
+    // ─────────────────────────────────────────────────────────────────────
 
-let scanner = StringScanner(minimumConfidence: 0.85)
-var fileResults: [(String, [DetectedString])] = []
+    @State private var isRunning = false
+    @State private var message   = "Tap to scan your project."
+    @State private var success   = false
 
-for case let url as URL in enumerator where url.pathExtension == "swift" {
-    let source = try! String(contentsOf: url)
-    let result = scanner.scan(source: source, filePath: url.lastPathComponent)
-    guard !result.detectedStrings.isEmpty else { continue }
-    fileResults.append((url.lastPathComponent, result.detectedStrings))
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: success ? "checkmark.circle.fill" : "text.magnifyingglass")
+                .font(.system(size: 52))
+                .foregroundStyle(success ? .green : .secondary)
 
-    // Print each detected string as it is found
-    for s in result.detectedStrings {
-        let pct = String(format: "%.0f%%", s.confidence * 100)
-        print("  [\(s.context.displayName)] \"\(s.value)\"  \(pct)  — \(url.lastPathComponent):\(s.location.line)")
+            Text(message)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            if isRunning {
+                ProgressView("Scanning…")
+            } else {
+                Button("Scan & Generate Strings") {
+                    Task { await generate() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(40)
+    }
+
+    private func generate() async {
+        isRunning = true
+        success   = false
+        message   = "Scanning…"
+        do {
+            let result = try await StringsGenerator(
+                sourcesPath: sourcesPath,
+                outputPath:  outputPath
+            ).run()
+            message = "✓ \(result.stringCount) strings across \(result.namespaceCount) namespace(s).\nStrings.swift written."
+            success = true
+        } catch {
+            message = "Error: \(error.localizedDescription)"
+        }
+        isRunning = false
     }
 }
-
-// Infer namespaces from file names and generate the Swift enum
-let namespaces = NamespaceInferrer().infer(from: fileResults)
-let code = CodeGenerator().generate(namespaces: namespaces)
-
-// Write Generated/Strings.swift — creates the folder if it does not exist
-let outputDir = (outputPath as NSString).deletingLastPathComponent
-try! FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
-try! code.write(toFile: outputPath, atomically: true, encoding: .utf8)
-
-let totalStrings = fileResults.flatMap(\.1).count
-print("\n✓ Scanned \(fileResults.count) file(s), found \(totalStrings) string(s)")
-print("✓ Wrote Strings.swift → \(outputPath)")
-print("  Namespaces: \(namespaces.map(\.name).joined(separator: ", "))")
 ```
 
-**Run it once** (Xcode → select `ScanStrings.swift` scheme → Run, or `swift ScanStrings.swift` in Terminal).
-
-Console output:
+Your project layout after running:
 
 ```
-  [TextField] "Email address"  94%  — SettingsView.swift:12
-  [Toggle] "Push Notifications"  95%  — SettingsView.swift:13
-  [Button] "Delete Account"  97%  — SettingsView.swift:14
-  [navigationTitle] "Settings"  99%  — SettingsView.swift:18
-  [alert] "Are you sure?"  96%  — SettingsView.swift:19
-  [Text] "Welcome Back"  99%  — HomeView.swift:9
-  [Button] "Get Started"  97%  — HomeView.swift:15
-
-✓ Scanned 2 file(s), found 7 string(s)
-✓ Wrote Strings.swift → .../Sources/YourApp/Generated/Strings.swift
-  Namespaces: Home, Settings
+YourApp/
+├── YourApp.xcodeproj
+└── Sources/
+    └── YourApp/
+        ├── ContentView.swift
+        ├── HomeView.swift
+        ├── SettingsView.swift
+        └── Generated/
+            └── Strings.swift   ← created automatically
 ```
 
-`Generated/Strings.swift` is created automatically:
+**Drag `Generated/Strings.swift` into your Xcode Project Navigator** and tick your app target — done.
+
+---
+
+### 3. What `Generated/Strings.swift` looks like
 
 ```swift
 // Auto-generated by SwiftL10n — do not edit manually.
@@ -155,68 +144,58 @@ import Foundation
 enum Strings {
 
     enum Home {
-        static let welcomeBack = NSLocalizedString("Welcome Back", comment: "Home.welcomeBack")
+        static let welcomeBack          = NSLocalizedString("Welcome Back",  comment: "Home.welcomeBack")
         static let getStartedButtonTitle = NSLocalizedString("Get Started", comment: "Home.getStartedButtonTitle")
     }
 
     enum Settings {
-        static let emailAddressPlaceholder = NSLocalizedString("Email address", comment: "Settings.emailAddressPlaceholder")
+        static let settingsNavigationTitle    = NSLocalizedString("Settings",          comment: "Settings.settingsNavigationTitle")
+        static let deleteAccountButtonTitle   = NSLocalizedString("Delete Account",    comment: "Settings.deleteAccountButtonTitle")
         static let pushNotificationsToggleLabel = NSLocalizedString("Push Notifications", comment: "Settings.pushNotificationsToggleLabel")
-        static let deleteAccountButtonTitle = NSLocalizedString("Delete Account", comment: "Settings.deleteAccountButtonTitle")
-        static let settingsNavigationTitle = NSLocalizedString("Settings", comment: "Settings.settingsNavigationTitle")
-        static let areYouSureAlertTitle = NSLocalizedString("Are you sure?", comment: "Settings.areYouSureAlertTitle")
+        static let areYouSureAlertTitle       = NSLocalizedString("Are you sure?",     comment: "Settings.areYouSureAlertTitle")
     }
 
 }
 ```
 
-**Add `Generated/Strings.swift` to your Xcode target** (drag it into the Project Navigator and tick your app target).
-
 ---
 
-### 3. Replace hardcoded strings
+### 4. Replace hardcoded strings
 
 ```swift
 // Before
 Text("Welcome Back")
 Button("Delete Account") { ... }
 .navigationTitle("Settings")
-TextField("Email address", text: $email)
 Toggle("Push Notifications", isOn: $on)
 .alert("Are you sure?", isPresented: $show) { ... }
 
-// After — Xcode autocompletes Strings.<Tab>
+// After — Xcode autocompletes Strings. <Tab>
 Text(Strings.Home.welcomeBack)
 Button(Strings.Settings.deleteAccountButtonTitle) { ... }
 .navigationTitle(Strings.Settings.settingsNavigationTitle)
-TextField(Strings.Settings.emailAddressPlaceholder, text: $email)
 Toggle(Strings.Settings.pushNotificationsToggleLabel, isOn: $on)
 .alert(Strings.Settings.areYouSureAlertTitle, isPresented: $show) { ... }
 ```
 
-**Add a `Localizable.strings` file** (File → New → Strings File → name it `Localizable`). `NSLocalizedString` falls back to the English string until you add translations — so it's safe to ship with an empty file.
+Add a `Localizable.strings` file per language (File → New → Strings File → name it `Localizable`). `NSLocalizedString` falls back to the English string until translations are added, so it is safe to ship with an empty file.
 
 ---
 
-### Scanning a single file instead of the whole project
-
-If you only want to scan one file, swap the directory walk for a direct scan:
+### Scanning a single file
 
 ```swift
-import SwiftL10nCore
-
-let source = try! String(contentsOfFile: "/path/to/SettingsView.swift")
-let result = StringScanner().scan(source: source, filePath: "SettingsView.swift")
-
-for s in result.detectedStrings {
-    print("[\(s.context.displayName)] \"\(s.value)\"  line \(s.location.line)")
-}
+let result = StringScanner().scan(
+    source: try! String(contentsOfFile: "/path/to/SettingsView.swift"),
+    filePath: "SettingsView.swift"
+)
+result.detectedStrings.forEach { print("[\($0.context.displayName)] \"\($0.value)\"") }
 ```
 
 ---
 
-> Re-run `ScanStrings.swift` any time you add new views to keep `Strings.swift` in sync.
-> For automatic regeneration on every build, CI enforcement, and custom rules see the [Production Guide](Documentation/ProductionGuide.md).
+> Re-run the `ContentView` any time you add new views to regenerate `Strings.swift`.  
+> For CI enforcement, Xcode Build Phase automation, and custom rules see the [Production Guide](Documentation/ProductionGuide.md).
 
 ---
 
