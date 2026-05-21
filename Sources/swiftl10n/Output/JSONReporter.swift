@@ -22,6 +22,12 @@ struct JSONReporter: Sendable {
             let namespaces: Int
             let warnings: Int
             let errors: Int
+            let cacheHits: Int
+
+            enum CodingKeys: String, CodingKey {
+                case files, strings, namespaces, warnings, errors
+                case cacheHits = "cache_hits"
+            }
         }
 
         struct DiagnosticEntry: Encodable {
@@ -59,7 +65,7 @@ struct JSONReporter: Sendable {
 
     // MARK: - Version
 
-    static let version = "0.5.1"
+    static let version = "0.5.2"
 
     // MARK: - Report
 
@@ -73,7 +79,8 @@ struct JSONReporter: Sendable {
                 strings: result.totalStrings,
                 namespaces: result.namespaces.count,
                 warnings: result.warningCount,
-                errors: result.errorCount
+                errors: result.errorCount,
+                cacheHits: result.cacheHits
             ),
             diagnostics: result.diagnostics
                 .filter { $0.severity != .note }

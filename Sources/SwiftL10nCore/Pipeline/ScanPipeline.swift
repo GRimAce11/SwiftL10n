@@ -20,6 +20,8 @@ public struct ScanPipeline: Sendable {
         public let namespaces: [Namespace]
         /// All diagnostics emitted during this run (notes, warnings, errors).
         public let diagnostics: [Diagnostic]
+        /// Files served from the incremental cache without re-scanning.
+        public let cacheHits: Int
 
         /// Sum of strings across all namespaces.
         public var totalStrings: Int { namespaces.reduce(0) { $0 + $1.strings.count } }
@@ -59,6 +61,14 @@ public struct ScanPipeline: Sendable {
         let engine = DiagnosticsEngine()
         var fileResults: [(filePath: String, strings: [DetectedString])] = []
         var scannedFileCount = 0
+        var cacheHits = 0
+
+        // Load incremental cache (no-op when incremental is disabled)
+        let cacheURL = baseURL.appendingPathComponent(ScanCache.defaultRelativePath)
+        var cache: ScanCache = config.incremental
+            ? ((try? IncrementalScanCache.load(from: cacheURL)) ?? ScanCache())
+            : ScanCache()
+        var cacheModified = false
 
         for source in effectiveSources {
             let sourceURL = resolvedURL(for: source)
@@ -75,11 +85,38 @@ public struct ScanPipeline: Sendable {
             scannedFileCount += files.count
 
             for fileURL in files {
+                let cacheKey = fileURL.resolvingSymlinksInPath().path
+
+                // Incremental: serve from cache if content unchanged
+                if config.incremental,
+                   let hash = try? IncrementalScanCache.contentHash(of: fileURL),
+                   cache.isValid(for: cacheKey, hash: hash),
+                   let entry = cache.entries[cacheKey] {
+                    entry.diagnostics.forEach { engine.emit($0) }
+                    if !entry.detectedStrings.isEmpty {
+                        fileResults.append((filePath: fileURL.path, strings: entry.detectedStrings))
+                    }
+                    cacheHits += 1
+                    continue
+                }
+
+                // Full scan
                 do {
                     let result = try scanner.scan(filePath: fileURL.path)
                     result.diagnostics.forEach { engine.emit($0) }
                     if !result.detectedStrings.isEmpty {
                         fileResults.append((filePath: fileURL.path, strings: result.detectedStrings))
+                    }
+
+                    if config.incremental {
+                        let hash = (try? IncrementalScanCache.contentHash(of: fileURL)) ?? ""
+                        cache.entries[cacheKey] = ScanCacheEntry(
+                            contentHash: hash,
+                            swiftl10nVersion: SwiftL10nCoreVersion.current,
+                            detectedStrings: result.detectedStrings,
+                            diagnostics: result.diagnostics
+                        )
+                        cacheModified = true
                     }
                 } catch {
                     engine.emit(.error, "Cannot read \(fileURL.lastPathComponent): \(error.localizedDescription)")
@@ -87,12 +124,18 @@ public struct ScanPipeline: Sendable {
             }
         }
 
+        // Persist cache if any entry was added or replaced
+        if config.incremental && cacheModified {
+            try? IncrementalScanCache.save(cache, to: cacheURL)
+        }
+
         let namespaces = NamespaceInferrer().infer(from: fileResults)
 
         return PipelineResult(
             scannedFiles: scannedFileCount,
             namespaces: namespaces,
-            diagnostics: engine.diagnostics
+            diagnostics: engine.diagnostics,
+            cacheHits: cacheHits
         )
     }
 

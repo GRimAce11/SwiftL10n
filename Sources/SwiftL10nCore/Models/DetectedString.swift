@@ -1,5 +1,5 @@
 /// A hardcoded string literal found in SwiftUI source that is a candidate for localization.
-public struct DetectedString: Sendable, Hashable {
+public struct DetectedString: Sendable, Hashable, Codable {
     /// The raw string value exactly as it appears in source (no surrounding quotes).
     /// For interpolated strings this is the template with `{…}` markers in place of
     /// interpolation segments, e.g. `"Hello {…}!"`.
@@ -44,7 +44,7 @@ public struct DetectedString: Sendable, Hashable {
 // MARK: - SourceLocation
 
 /// A 1-based line/column position inside a source file.
-public struct SourceLocation: Sendable, Hashable {
+public struct SourceLocation: Sendable, Hashable, Codable {
     public let file: String
     /// 1-based line number.
     public let line: Int

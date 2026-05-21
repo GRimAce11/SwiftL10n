@@ -10,6 +10,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.5.2] — 2026-05-21
+
+### Added
+
+- **`IncrementalScanCache`** — CryptoKit SHA-256 per-file hashing. When `incremental: true` in `.swiftl10n.yml`, unchanged files are served from `.build/swiftl10n-cache.json` without re-parsing. Cache entries are invalidated automatically when the file content changes or `SwiftL10nCoreVersion` bumps.
+- **`ScanCache` / `ScanCacheEntry`** — `Sendable & Codable` structs. `ScanCache.isValid(for:hash:)` validates both content hash and library version in one call. Cache is written atomically; intermediate directories are created automatically.
+- **`SwiftL10nCoreVersion.current`** — version constant embedded in every cache entry for library-level invalidation.
+- **`Codable` on all model types** — `DetectedString`, `SourceLocation`, `EnclosingContext`, `Diagnostic`, `Diagnostic.Severity`, `DetectionContext` (custom coding for `unknownUIContext(callee:)`) are now fully `Codable`. Enables cache serialisation and future JSON export of raw scan results.
+- **`PipelineResult.cacheHits`** — count of files served from cache; shown in console output `(N cached)` and in JSON `scanned.cache_hits`.
+- **14 new tests** — hashing (known SHA-256 vector, consistency, change detection), `ScanCache` validation, round-trip encode/decode with all context types, `IncrementalScanCache` I/O, and two end-to-end integration tests (warm cache → 0 rescans; modified file → 0 cache hits). 223 total, 0 failures.
+
+---
+
 ## [0.5.1] — 2026-05-21
 
 ### Added
@@ -187,7 +200,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.1...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.1...0.5.0
 [0.4.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.0...0.4.1

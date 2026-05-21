@@ -102,7 +102,8 @@ struct ScanCommand: ParsableCommand {
             }
 
             if !quiet {
-                print("Found \(result.totalStrings) string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s).")
+                let cacheNote = result.cacheHits > 0 ? " (\(result.cacheHits) cached)" : ""
+                print("Found \(result.totalStrings) string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s)\(cacheNote).")
                 for ns in result.namespaces.sorted(by: { $0.name < $1.name }) {
                     print("  \(ns.name): \(ns.strings.count) string(s)")
                 }

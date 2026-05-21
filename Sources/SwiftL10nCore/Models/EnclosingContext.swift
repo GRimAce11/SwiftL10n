@@ -5,7 +5,7 @@
 ///      likely a UI string, which nudges the score upward.
 ///   2. **Namespace inference improvement** — future phases can override the file-based
 ///      namespace with the enclosing type name when they differ (e.g. embedded preview helpers).
-public struct EnclosingContext: Sendable, Hashable {
+public struct EnclosingContext: Sendable, Hashable, Codable {
     /// Name of the nearest enclosing `struct`, `class`, `enum`, or `extension`.
     public let typeName: String?
 
