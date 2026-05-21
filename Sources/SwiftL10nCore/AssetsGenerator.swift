@@ -170,7 +170,7 @@ public struct AssetsGenerator: Sendable {
     ///   Sources/Assets.xcassets            (level 1)
     ///   YourApp/Assets.xcassets            (level 2)
     private func discoverCatalogURLs(from startURL: URL) -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = URL(fileURLWithPath: NSHomeDirectory())
         var search = startURL
         var found: [URL] = []
 

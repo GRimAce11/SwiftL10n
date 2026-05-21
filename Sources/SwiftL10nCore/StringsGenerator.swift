@@ -269,7 +269,7 @@ public struct StringsGenerator: Sendable {
     /// Shallow walk up to 3 levels: only immediate children of each directory are checked.
     /// Avoids picking up unrelated catalogs from sibling directories.
     private func shallowCatalogURLs(from startURL: URL) -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = URL(fileURLWithPath: NSHomeDirectory())
         var search = startURL
         var found: [URL] = []
 

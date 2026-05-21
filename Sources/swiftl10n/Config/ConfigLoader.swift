@@ -19,7 +19,7 @@ public struct ConfigLoader: Sendable {
     public static func discover(
         from startURL: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     ) -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = URL(fileURLWithPath: NSHomeDirectory())
         var current = startURL.standardized
 
         while true {
