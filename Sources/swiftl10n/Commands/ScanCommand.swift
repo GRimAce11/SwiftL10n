@@ -19,6 +19,12 @@ struct ScanCommand: ParsableCommand {
     @Flag(name: [.customShort("q"), .long], help: "Suppress informational output; show only errors.")
     var quiet: Bool = false
 
+    @Option(name: .long, help: "Only report strings at or above this confidence threshold (0.0–1.0).")
+    var minConfidence: Double = 0.0
+
+    @Option(name: [.customShort("o"), .long], help: "Write the generated Swift Strings enum to this file.")
+    var output: String?
+
     // MARK: - Run
 
     mutating func run() throws {
@@ -45,12 +51,20 @@ struct ScanCommand: ParsableCommand {
                 fileResults.append((filePath: fileURL.path, strings: result.detectedStrings))
 
                 if verbose {
-                    for s in result.detectedStrings {
-                        printInfo("  [\(s.context.displayName)] \"\(s.value)\" — \(s.location)")
+                    for s in result.detectedStrings where s.confidence >= minConfidence {
+                        let conf = String(format: "%.2f", s.confidence)
+                        printInfo("  [\(s.context.displayName)] \"\(s.value)\" conf:\(conf) — \(s.location)")
                     }
                 }
             } catch {
                 diagnosticsEngine.emit(.error, "Cannot read file: \(error.localizedDescription)", at: nil)
+            }
+        }
+
+        // Apply confidence filter.
+        if minConfidence > 0.0 {
+            fileResults = fileResults.map { (path, strings) in
+                (path, strings.filter { $0.confidence >= minConfidence })
             }
         }
 
@@ -62,6 +76,16 @@ struct ScanCommand: ParsableCommand {
             print("Found \(totalStrings) localizable string(s) across \(namespaces.count) namespace(s).")
             for ns in namespaces.sorted(by: { $0.name < $1.name }) {
                 print("  \(ns.name): \(ns.strings.count) string(s) (\(ns.sourceFile))")
+            }
+        }
+
+        // Code generation.
+        if let outputPath = output {
+            let code = CodeGenerator().generate(namespaces: namespaces)
+            let outputURL = URL(fileURLWithPath: outputPath)
+            try code.write(to: outputURL, atomically: true, encoding: .utf8)
+            if !quiet {
+                print("Generated \(outputURL.lastPathComponent).")
             }
         }
 
