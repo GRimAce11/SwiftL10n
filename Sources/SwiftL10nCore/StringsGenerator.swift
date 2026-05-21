@@ -257,37 +257,37 @@ public struct StringsGenerator: Sendable {
     ///   Sources/Assets.xcassets               (level 1)
     ///   YourApp/Assets.xcassets               (level 2, standard Xcode project)
     private func discoverCatalog(from startURL: URL) -> AssetCatalog {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        var search = startURL
-        var catalogURLs: [URL] = []
-
-        for _ in 0..<3 {
-            catalogURLs.append(contentsOf: AssetCatalogParser.findCatalogs(in: search))
-            if search.resolvingSymlinksInPath().path == home.resolvingSymlinksInPath().path { break }
-            let parent = search.deletingLastPathComponent()
-            if parent.path == search.path { break }
-            search = parent
-        }
-
-        let parsed = catalogURLs.compactMap { try? AssetCatalogParser.parse(catalogURL: $0) }
+        let urls = shallowCatalogURLs(from: startURL)
+        let parsed = urls.compactMap { try? AssetCatalogParser.parse(catalogURL: $0) }
         return AssetCatalog.merged(parsed)
     }
 
-    /// Returns the last-path-component names of all catalogs found near `startURL`.
     private func assetCatalogNames(from startURL: URL) -> [String] {
+        shallowCatalogURLs(from: startURL).map(\.lastPathComponent)
+    }
+
+    /// Shallow walk up to 3 levels: only immediate children of each directory are checked.
+    /// Avoids picking up unrelated catalogs from sibling directories.
+    private func shallowCatalogURLs(from startURL: URL) -> [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         var search = startURL
-        var names: [String] = []
+        var found: [URL] = []
 
         for _ in 0..<3 {
-            names.append(contentsOf:
-                AssetCatalogParser.findCatalogs(in: search).map(\.lastPathComponent)
-            )
+            if let items = try? FileManager.default.contentsOfDirectory(
+                at: search,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for item in items where item.pathExtension == "xcassets" {
+                    found.append(item)
+                }
+            }
             if search.resolvingSymlinksInPath().path == home.resolvingSymlinksInPath().path { break }
             let parent = search.deletingLastPathComponent()
             if parent.path == search.path { break }
             search = parent
         }
-        return names
+        return found
     }
 }
