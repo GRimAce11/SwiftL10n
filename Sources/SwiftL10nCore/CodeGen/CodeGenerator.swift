@@ -1,19 +1,4 @@
 /// Converts a list of `Namespace` values into a single Swift source file string.
-///
-/// Phase 1 skeleton — property names are derived mechanically from the raw string value.
-/// Phase 2 will introduce semantic naming (context suffix, deduplication, conflict resolution).
-///
-/// Generated output shape:
-/// ```swift
-/// enum i18n {
-///     fileprivate enum General { … }
-/// }
-/// extension i18n {
-///     enum Settings {
-///         static var deleteAccountButtonTitle: String { … }
-///     }
-/// }
-/// ```
 public struct CodeGenerator: Sendable {
 
     // MARK: - Configuration
@@ -96,7 +81,7 @@ public struct CodeGenerator: Sendable {
         lines.append("extension \(configuration.rootEnumName) {")
         lines.append("    enum \(namespace.name) {")
 
-        for string in namespace.strings where !string.hasInterpolation {
+        for string in deduplicated(namespace.strings) {
             let funcName = propertyName(for: string)
             let comment  = "\(namespace.name): \(string.context.displayName) — \(escaped(string.value))"
             lines.append("        /// \"\(escaped(string.value))\"")
@@ -117,13 +102,48 @@ public struct CodeGenerator: Sendable {
         return lines
     }
 
+    // MARK: - Deduplication
+
+    /// When two strings produce the same function name (e.g. "Continue" and "Continue →"),
+    /// keep the one with fewer decorative characters — the cleaner string is the localisation key.
+    /// Preserves original detection order for the survivors.
+    private func deduplicated(_ strings: [DetectedString]) -> [DetectedString] {
+        // Skip interpolated strings — they're never generated
+        let candidates = strings.filter { !$0.hasInterpolation }
+
+        // For each function name, find the string with the fewest decorative chars
+        var best: [String: DetectedString] = [:]
+        for string in candidates {
+            let name = propertyName(for: string)
+            if let existing = best[name] {
+                if decorativeCount(string.value) < decorativeCount(existing.value) {
+                    best[name] = string
+                }
+            } else {
+                best[name] = string
+            }
+        }
+
+        // Emit in original order, one entry per name
+        var emitted = Set<String>()
+        return candidates.compactMap { string in
+            let name = propertyName(for: string)
+            guard !emitted.contains(name), best[name]?.value == string.value else { return nil }
+            emitted.insert(name)
+            return string
+        }
+    }
+
+    /// Number of non-letter, non-digit, non-whitespace characters — a proxy for "decorative noise".
+    private func decorativeCount(_ value: String) -> Int {
+        value.filter { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }.count
+    }
+
     // MARK: - Naming Helpers
 
-    /// Phase 1: derive a camelCase identifier from the raw string value + context suffix.
-    /// Phase 2 will add deduplication and collision resolution.
     func propertyName(for string: DetectedString) -> String {
         let words = string.value
-            .components(separatedBy: .init(charactersIn: " \t\n-_.,;:!?()[]{}\"'"))
+            .components(separatedBy: .init(charactersIn: " \t\n-_.,;:!?()[]{}\"'→←↑↓•…"))
             .filter { !$0.isEmpty }
             .map { $0.filter(\.isLetter) }
             .filter { !$0.isEmpty }
