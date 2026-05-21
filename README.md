@@ -262,6 +262,84 @@ Localizable.xcstrings
 
 ---
 
+### Using in a UIKit project (no ContentView)
+
+The API is identical — UIKit just uses different entry points. Pick whichever suits your project.
+
+#### Option A — `AppDelegate` (runs once on launch)
+
+```swift
+import UIKit
+import SwiftL10nCore
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+
+        Task { await scanStrings() }   // ← add this line
+
+        return true
+    }
+}
+
+// ── Paste this function anywhere in your project ───────────────────────────
+private func scanStrings() async {
+    do {
+        let result = try await generateStrings(
+            sourcesPath: "/Users/you/Developer/YourApp/YourApp",                    // ← change
+            outputPath:  "/Users/you/Developer/YourApp/YourApp/Generated/Strings.swift"  // ← change
+        )
+        print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
+    } catch {
+        print("SwiftL10n error: \(error.localizedDescription)")
+    }
+}
+// ───────────────────────────────────────────────────────────────────────────
+```
+
+#### Option B — `SceneDelegate`
+
+```swift
+import UIKit
+import SwiftL10nCore
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        Task { await scanStrings() }   // ← add this line
+    }
+}
+```
+
+#### Option C — Root `UIViewController`
+
+```swift
+import UIKit
+import SwiftL10nCore
+
+class RootViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        Task { await scanStrings() }   // ← add this line
+    }
+}
+```
+
+All three options call the same `scanStrings()` function — define it once anywhere in your project.
+
+> **Remove the `Task { await scanStrings() }` line** after `Strings.swift` is generated. You only need it when regenerating after adding new strings.
+
+---
+
 ### Scanning a single file
 
 ```swift
