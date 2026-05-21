@@ -10,7 +10,7 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
 
     /// Directories to scan, relative to the config file's directory. Default: `["Sources"]`.
     public let sources: [String]
-    /// Code-generation output settings.
+    /// Localization code-generation output settings.
     public let output: OutputConfig
     /// Ignore strings scored below this threshold. Default: `0.85`.
     public let minimumConfidence: Double
@@ -18,6 +18,42 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
     public let exclude: [String]
     /// Cache per-file scan results to speed up subsequent runs. Default: `false`.
     public let incremental: Bool
+    /// Asset code-generation settings. Set `enabled: true` to generate `Assets.swift`.
+    public let assets: AssetsOutputConfig
+
+    // MARK: - Nested: AssetsOutputConfig
+
+    public struct AssetsOutputConfig: Sendable, Codable, Equatable {
+        /// Whether to generate `Assets.swift` during `swiftl10n scan`. Default: `false`.
+        public let enabled: Bool
+        /// Where to write `Assets.swift`, relative to the config file's directory.
+        public let path: String
+        /// Root enum name in the generated file. Default: `Assets`.
+        public let enumName: String
+
+        public init(
+            enabled: Bool = false,
+            path: String = "Sources/Generated/Assets.swift",
+            enumName: String = "Assets"
+        ) {
+            self.enabled  = enabled
+            self.path     = path
+            self.enumName = enumName
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case enabled
+            case path
+            case enumName = "enum_name"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            enabled  = try c.decodeIfPresent(Bool.self,   forKey: .enabled)  ?? false
+            path     = try c.decodeIfPresent(String.self, forKey: .path)     ?? "Sources/Generated/Assets.swift"
+            enumName = try c.decodeIfPresent(String.self, forKey: .enumName) ?? "Assets"
+        }
+    }
 
     // MARK: - Nested: OutputConfig
 
@@ -60,7 +96,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         output: .init(),
         minimumConfidence: 0.85,
         exclude: [],
-        incremental: false
+        incremental: false,
+        assets: .init()
     )
 
     // MARK: - Init
@@ -70,13 +107,15 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         output: OutputConfig = .init(),
         minimumConfidence: Double = 0.85,
         exclude: [String] = [],
-        incremental: Bool = false
+        incremental: Bool = false,
+        assets: AssetsOutputConfig = .init()
     ) {
         self.sources = sources
         self.output = output
         self.minimumConfidence = minimumConfidence
         self.exclude = exclude
         self.incremental = incremental
+        self.assets = assets
     }
 
     // MARK: - CodingKeys (snake_case YAML ↔ camelCase Swift)
@@ -87,15 +126,17 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         case minimumConfidence = "minimum_confidence"
         case exclude
         case incremental
+        case assets
     }
 
     // Provide defaults for every field so a minimal YAML (e.g. `sources: [Sources]`) is valid.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        sources           = try c.decodeIfPresent([String].self, forKey: .sources)          ?? ["Sources"]
-        output            = try c.decodeIfPresent(OutputConfig.self, forKey: .output)       ?? .init()
-        minimumConfidence = try c.decodeIfPresent(Double.self, forKey: .minimumConfidence)  ?? 0.85
-        exclude           = try c.decodeIfPresent([String].self, forKey: .exclude)          ?? []
-        incremental       = try c.decodeIfPresent(Bool.self, forKey: .incremental)          ?? false
+        sources           = try c.decodeIfPresent([String].self, forKey: .sources)                ?? ["Sources"]
+        output            = try c.decodeIfPresent(OutputConfig.self, forKey: .output)             ?? .init()
+        minimumConfidence = try c.decodeIfPresent(Double.self, forKey: .minimumConfidence)        ?? 0.85
+        exclude           = try c.decodeIfPresent([String].self, forKey: .exclude)                ?? []
+        incremental       = try c.decodeIfPresent(Bool.self, forKey: .incremental)                ?? false
+        assets            = try c.decodeIfPresent(AssetsOutputConfig.self, forKey: .assets)       ?? .init()
     }
 }

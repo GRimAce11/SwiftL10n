@@ -28,6 +28,9 @@ struct ScanCommand: ParsableCommand {
     @Option(name: [.customShort("o"), .long], help: "Output path for the generated i18n.swift. Overrides config.")
     var output: String?
 
+    @Option(name: .long, help: "Generate Assets.swift from .xcassets catalogs found in the project root.")
+    var assetsOutput: String?
+
     @Option(name: .long, help: "Output format: console (default) or json.")
     var format: OutputFormat = .console
 
@@ -137,7 +140,31 @@ struct ScanCommand: ParsableCommand {
             }
         }
 
-        // ── 6. Exit code ──────────────────────────────────────────────────────
+        // ── 6. Asset generation ───────────────────────────────────────────────
+        let assetsOutputPath: String? = assetsOutput ?? (effectiveConfig.assets.enabled ? {
+            let p = effectiveConfig.assets.path
+            return p.hasPrefix("/") ? p : configBaseURL.appendingPathComponent(p).path
+        }() : nil)
+
+        if let assetsPath = assetsOutputPath {
+            let catalog = try AssetCatalogParser.parseCatalogs(in: configBaseURL)
+            let generatorConfig = AssetCodeGenerator.Configuration(
+                rootEnumName: effectiveConfig.assets.enumName
+            )
+            let assetsCode = AssetCodeGenerator(configuration: generatorConfig).generate(catalog: catalog)
+            let assetsURL  = URL(fileURLWithPath: assetsPath)
+            try FileManager.default.createDirectory(
+                at: assetsURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let existed = FileManager.default.fileExists(atPath: assetsPath)
+            try assetsCode.write(to: assetsURL, atomically: true, encoding: .utf8)
+            if !quiet {
+                print("\(existed ? "Updated" : "Created") \(assetsURL.lastPathComponent) (\(catalog.count) asset(s)).")
+            }
+        }
+
+        // ── 7. Exit code ──────────────────────────────────────────────────────
         let shouldFail: Bool = switch failOn {
         case .errors:   result.errorCount > 0
         case .warnings: result.warningCount > 0 || result.errorCount > 0

@@ -36,7 +36,7 @@ struct InitCommand: ParsableCommand {
         sources:
           - \(sources)
 
-        # Generated output.
+        # Localization output — generates i18n.swift.
         output:
           path: \(output)
           enum_name: i18n
@@ -52,6 +52,13 @@ struct InitCommand: ParsableCommand {
 
         # Cache per-file results to skip unchanged files on subsequent runs.
         incremental: false
+
+        # Asset output — generates Assets.swift from .xcassets catalogs.
+        # Set enabled: true to activate.
+        assets:
+          enabled: false
+          path: Sources/Generated/Assets.swift
+          enum_name: Assets
         """
 
         try yaml.write(to: configURL, atomically: true, encoding: .utf8)

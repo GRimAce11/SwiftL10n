@@ -10,6 +10,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.6.1] — 2026-05-21
+
+### Added
+
+- **`AssetCodeGenerator`** — generates `Assets.swift` from an `AssetCatalog`. Source of truth is the parsed catalog only, not detected source references: every asset declared in the catalog gets a typed accessor regardless of whether it is already referenced in code. Output is deterministic (sorted), namespace-aware (nested Swift enums mirror catalog group hierarchy), and collision-safe (duplicate identifiers receive `_2`, `_3` suffixes).
+- **Generated API style: `static func` returning `Image`/`Color`** (iOS 13+ compatible, matches `i18n` generation pattern). Example: `Assets.Icons.profileIcon()`, `Assets.primaryBlue()`.
+- **Identifier conversion** — asset stems → camelCase Swift identifiers: `profile_icon` → `profileIcon`, `PrimaryBlue` → `primaryBlue`, `app-icon` → `appIcon`. Digit-leading stems get a `_` prefix. Namespace group names → PascalCase Swift type names: `my-icons` → `MyIcons`.
+- **`SwiftL10nConfig.AssetsOutputConfig`** — new config section in `.swiftl10n.yml`: `assets.enabled`, `assets.path`, `assets.enum_name`. Disabled by default; set `enabled: true` to activate asset generation during `swiftl10n scan`.
+- **`swiftl10n scan --assets-output <path>`** — CLI flag to generate `Assets.swift` for the current run without modifying config.
+- **`swiftl10n init`** YAML template updated to include the `assets` section with commented defaults.
+- **30 new tests** — `AssetCodeGeneratorTests` (identifier/type-name conversion, empty catalog, images, colors, mixed, namespace-aware, deep nesting, collisions, custom config, determinism, sorting, file structure) and `AssetsOutputConfigTests` (YAML decode, defaults). 282 total, 0 failures.
+
+### Changed
+
+- `ScanCommand` now runs asset generation after localization scan when `assets.enabled: true` in config or `--assets-output` flag is passed.
+- `swiftl10n init` YAML template includes `assets:` section with `enabled: false` default.
+
+---
+
 ## [0.6.0] — 2026-05-21
 
 ### Added
@@ -213,7 +232,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.1...HEAD
+[0.6.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.2...0.6.0
 [0.5.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.0...0.5.1
