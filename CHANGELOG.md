@@ -10,6 +10,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.3.0] — 2026-05-21
+
+### Added
+
+- **UIKit string detection** — 18 new tests, 158 total passing
+  - **`PropertyAssignmentRule` protocol** — new visitor for `property = "string"` expressions; handles `label.text`, `textField.placeholder`, `navigationItem.title`, `self.title`, bare `title`
+  - **`UIKitPropertyAssignmentRule`** — maps `text` → `.uiLabel`, `placeholder` → `.uiTextFieldPlaceholder`, `title` → `.uiNavigationTitle`
+  - **6 new function-call rules** — `UIButtonSetTitleRule`, `UIAlertControllerTitleRule`, `UIAlertControllerMessageRule`, `UIAlertActionRule`, `UIBarButtonItemRule`, `UITabBarItemRule`
+  - **8 new `DetectionContext` cases** — `.uiLabel`, `.uiButtonTitle`, `.uiTextFieldPlaceholder`, `.uiNavigationTitle`, `.uiAlertTitle`, `.uiAlertMessage`, `.uiAlertAction`, `.uiTabBarItem`
+  - **`RuleEngine.uikit`** — UIKit-only preset; use with `StringScanner(ruleEngine: .uikit)`
+  - **`RuleEngine.full`** — SwiftUI + UIKit combined; use with `StringScanner(ruleEngine: .full)`
+  - **`UIAlertController` detects both strings** — title and message extracted from a single call site; visitor no longer breaks on first match for function calls
+  - **UIKit integration guide** in README — `AppDelegate`, `SceneDelegate`, and `UIViewController` entry points with copy-paste `scanStrings()` function
+
+### Fixed
+
+- **Sandbox permission error** — `GeneratorError.permissionDenied` now prints a step-by-step fix guide instead of the raw system error
+- **`scanStrings()` guarded with `#if DEBUG && !targetEnvironment(simulator)`** — prints a clear skip message when accidentally run on a real device; never runs in release
+- **Single `projectPath` variable** — `outputPath` is derived from `projectPath`, users change one line not two
+
+### Changed
+
+- `isDirect()` and `memberName()` helpers promoted from `private` to `internal` so `UIKitRules.swift` can share them without duplication
+
+---
+
 ## [0.2.0] — 2026-05-21
 
 ### Added
@@ -73,6 +99,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/GRimAce11/SwiftL10n/releases/tag/0.1.0
