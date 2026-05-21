@@ -1,0 +1,36 @@
+name: Feature Request
+description: Suggest a new detection rule, API, or workflow improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. A concrete example goes a long way.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the workflow or gap you're hitting.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe what you'd like to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: SwiftUI call site (if applicable)
+      description: Paste the Swift snippet you want to be detected.
+      render: swift
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
