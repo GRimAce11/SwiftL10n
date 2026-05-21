@@ -26,12 +26,14 @@ import Foundation
 public func generateStrings(
     sourcesPath: String,
     outputPath: String,
-    minimumConfidence: Double = 0.85
+    minimumConfidence: Double = 0.85,
+    ruleEngine: RuleEngine = .default
 ) async throws -> StringsGenerator.Result {
     try await StringsGenerator(
         sourcesPath: sourcesPath,
         outputPath: outputPath,
-        minimumConfidence: minimumConfidence
+        minimumConfidence: minimumConfidence,
+        ruleEngine: ruleEngine
     ).run()
 }
 
@@ -100,6 +102,7 @@ public struct StringsGenerator: Sendable {
     private let sourcesURL: URL
     private let outputURL: URL
     private let minimumConfidence: Double
+    private let ruleEngine: RuleEngine
 
     // MARK: - Init
 
@@ -108,14 +111,18 @@ public struct StringsGenerator: Sendable {
     ///   - outputPath:  Absolute path where `Strings.swift` will be written.
     ///                  The parent directory is created automatically if it does not exist.
     ///   - minimumConfidence: Strings below this threshold are ignored. Default `0.85`.
+    ///   - ruleEngine: Detection rules to apply. Use `.default` for SwiftUI, `.uikit` for
+    ///                 UIKit, or `.full` for a mixed project. Default `.default`.
     public init(
         sourcesPath: String,
         outputPath: String,
-        minimumConfidence: Double = 0.85
+        minimumConfidence: Double = 0.85,
+        ruleEngine: RuleEngine = .default
     ) {
         self.sourcesURL = URL(fileURLWithPath: sourcesPath)
         self.outputURL  = URL(fileURLWithPath: outputPath)
         self.minimumConfidence = minimumConfidence
+        self.ruleEngine = ruleEngine
     }
 
     // MARK: - Run
@@ -142,7 +149,7 @@ public struct StringsGenerator: Sendable {
             throw GeneratorError.sourceDirectoryNotFound(sourcesURL.path)
         }
 
-        let scanner = StringScanner(minimumConfidence: minimumConfidence)
+        let scanner = StringScanner(ruleEngine: ruleEngine, minimumConfidence: minimumConfidence)
         var fileResults: [(String, [DetectedString])] = []
         var warningCount = 0
 

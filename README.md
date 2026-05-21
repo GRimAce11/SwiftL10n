@@ -276,7 +276,28 @@ Localizable.xcstrings
 
 ### Using in a UIKit project (no ContentView)
 
-The API is identical — UIKit just uses different entry points. Pick whichever suits your project.
+UIKit projects use different entry points but the same `scanStrings()` function. The only extra step compared to SwiftUI is passing `ruleEngine: .uikit` (or `.full` for mixed projects) to `StringsGenerator`.
+
+#### Choose your rule engine
+
+| Project type | Parameter |
+|---|---|
+| Pure SwiftUI | `StringsGenerator(…)` — default, no parameter needed |
+| Pure UIKit | `StringsGenerator(…, ruleEngine: .uikit)` |
+| SwiftUI + UIKit mixed | `StringsGenerator(…, ruleEngine: .full)` |
+
+#### What UIKit patterns are detected
+
+| Pattern | Context |
+|---|---|
+| `label.text = "…"` / `textView.text = "…"` | `.uiLabel` |
+| `textField.placeholder = "…"` / `searchBar.placeholder = "…"` | `.uiTextFieldPlaceholder` |
+| `navigationItem.title = "…"` / `self.title = "…"` / `title = "…"` | `.uiNavigationTitle` |
+| `button.setTitle("…", for: .normal)` | `.uiButtonTitle` |
+| `UIAlertController(title: "…", message: "…", …)` | `.uiAlertTitle` + `.uiAlertMessage` |
+| `UIAlertAction(title: "…", …)` | `.uiAlertAction` |
+| `UIBarButtonItem(title: "…", …)` | `.uiButtonTitle` |
+| `UITabBarItem(title: "…", …)` | `.uiTabBarItem` |
 
 #### Option A — `AppDelegate` (runs once on launch)
 
@@ -308,7 +329,8 @@ private func scanStrings() async {
     do {
         let result = try await generateStrings(
             sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/Strings.swift"
+            outputPath:  "\(projectPath)/Generated/Strings.swift",
+            ruleEngine:  .uikit   // ← .uikit for pure UIKit, .full for SwiftUI + UIKit
         )
         print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
     } catch {
@@ -352,9 +374,11 @@ class RootViewController: UIViewController {
 }
 ```
 
-All three options call the same `scanStrings()` function — define it once anywhere in your project.
+All three options call the same `scanStrings()` function shown in Option A — define it once anywhere in your project.
 
 > **Remove the `Task { await scanStrings() }` line** after `Strings.swift` is generated. You only need it when regenerating after adding new strings.
+>
+> **Sandbox error?** App Sandbox is macOS-only — iOS has no toggle. Run on **Simulator** (not a real device) and the write will succeed without any settings change.
 
 ---
 
@@ -542,7 +566,9 @@ enum Strings {
 
 ## Detection rules
 
-| SwiftUI call | `DetectionContext` | Example |
+### SwiftUI — `RuleEngine.default`
+
+| Call site | `DetectionContext` | Example |
 |---|---|---|
 | `Text("…")` | `.textView` | `Text("Hello, World!")` |
 | `Button("…") {}` | `.buttonLabel` | `Button("Delete") {}` |
@@ -554,6 +580,23 @@ enum Strings {
 | `.alert("…", isPresented:)` | `.alert` | `.alert("Are you sure?", isPresented: $shown) {}` |
 | `.confirmationDialog("…", isPresented:)` | `.confirmationDialog` | `.confirmationDialog("Choose", isPresented: $shown) {}` |
 | `.accessibilityLabel("…")` | `.accessibilityLabel` | `.accessibilityLabel("Close button")` |
+
+### UIKit — `RuleEngine.uikit` · Mixed — `RuleEngine.full`
+
+| Call site / assignment | `DetectionContext` | Example |
+|---|---|---|
+| `label.text = "…"` | `.uiLabel` | `nameLabel.text = "Full Name"` |
+| `textView.text = "…"` | `.uiLabel` | `bodyView.text = "Description"` |
+| `textField.placeholder = "…"` | `.uiTextFieldPlaceholder` | `emailField.placeholder = "Email"` |
+| `searchBar.placeholder = "…"` | `.uiTextFieldPlaceholder` | `searchBar.placeholder = "Search"` |
+| `navigationItem.title = "…"` | `.uiNavigationTitle` | `navigationItem.title = "Settings"` |
+| `self.title = "…"` / `title = "…"` | `.uiNavigationTitle` | `title = "Profile"` |
+| `button.setTitle("…", for:)` | `.uiButtonTitle` | `btn.setTitle("Tap Me", for: .normal)` |
+| `UIBarButtonItem(title: "…", …)` | `.uiButtonTitle` | `UIBarButtonItem(title: "Done", …)` |
+| `UIAlertController(title: "…", …)` | `.uiAlertTitle` | title argument only |
+| `UIAlertController(…, message: "…", …)` | `.uiAlertMessage` | message argument only |
+| `UIAlertAction(title: "…", …)` | `.uiAlertAction` | `UIAlertAction(title: "Delete", …)` |
+| `UITabBarItem(title: "…", …)` | `.uiTabBarItem` | `UITabBarItem(title: "Home", …)` |
 
 ### Intentional exclusions
 
