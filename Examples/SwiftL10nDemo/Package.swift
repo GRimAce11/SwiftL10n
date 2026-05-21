@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SwiftL10nDemo",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14)],   // @Observable requires macOS 14
     dependencies: [
         .package(path: "../.."),
     ],
