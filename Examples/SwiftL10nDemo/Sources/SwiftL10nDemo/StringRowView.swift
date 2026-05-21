@@ -79,16 +79,26 @@ private struct ContextBadge: View {
 
     private var badgeColor: Color {
         switch context {
-        case .textView:          return .blue
-        case .buttonLabel:       return .purple
-        case .labelView:         return .indigo
-        case .toggle:            return .teal
-        case .textField:         return .cyan
-        case .navigationTitle:   return .green
-        case .alert:             return .red
+        // SwiftUI
+        case .textView:           return .blue
+        case .buttonLabel:        return .purple
+        case .labelView:          return .indigo
+        case .toggle:             return .teal
+        case .textField:          return .cyan
+        case .navigationTitle:    return .green
+        case .alert:              return .red
         case .confirmationDialog: return .orange
         case .accessibilityLabel: return .mint
-        case .unknownUIContext:  return .gray
+        // UIKit
+        case .uiLabel:            return .blue
+        case .uiButtonTitle:      return .purple
+        case .uiTextFieldPlaceholder: return .cyan
+        case .uiNavigationTitle:  return .green
+        case .uiAlertTitle:       return .red
+        case .uiAlertMessage:     return .pink
+        case .uiAlertAction:      return .orange
+        case .uiTabBarItem:       return .indigo
+        case .unknownUIContext:   return .gray
         }
     }
 }

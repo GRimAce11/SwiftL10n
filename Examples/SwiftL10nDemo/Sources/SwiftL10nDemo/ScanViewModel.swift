@@ -47,9 +47,9 @@ final class ScanViewModel {
         CodeGenerator().generate(namespaces: namespaces)
     }
 
-    // MARK: - Default fixture
+    // MARK: - Fixtures
 
-    static let defaultSource = """
+    static let swiftUISource = """
     import SwiftUI
 
     struct SettingsView: View {
@@ -63,9 +63,7 @@ final class ScanViewModel {
                     Label("Profile", systemImage: "person.circle")
                     Label("Security", systemImage: "lock.shield")
                     TextField("Email address", text: $email)
-                    Button("Delete Account") {
-                        showDeleteAlert = true
-                    }
+                    Button("Delete Account") { showDeleteAlert = true }
                 }
                 Section("Preferences") {
                     Toggle("Push Notifications", isOn: $notificationsEnabled)
@@ -82,11 +80,9 @@ final class ScanViewModel {
 
     struct OnboardingView: View {
         let name: String
-
         var body: some View {
             VStack(spacing: 24) {
                 Text("Welcome to the App")
-                    .font(.largeTitle)
                 Text("Hello \\(name), let's get started.")
                 Button("Continue") {}
                 Button("Skip for now") {}
@@ -95,4 +91,42 @@ final class ScanViewModel {
         }
     }
     """
+
+    static let uiKitSource = """
+    import UIKit
+
+    class ProfileViewController: UIViewController {
+        @IBOutlet weak var nameLabel: UILabel!
+        @IBOutlet weak var emailField: UITextField!
+        @IBOutlet weak var editButton: UIButton!
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            title = "Profile"
+            nameLabel.text = "Full Name"
+            emailField.placeholder = "Enter your email"
+            editButton.setTitle("Edit Profile", for: .normal)
+        }
+
+        func confirmDelete() {
+            let alert = UIAlertController(
+                title: "Delete Account",
+                message: "This action cannot be undone.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Delete", style: .destructive))
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            present(alert, animated: true)
+        }
+    }
+
+    class HomeViewController: UIViewController {
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            navigationItem.title = "Home"
+        }
+    }
+    """
+
+    static let defaultSource = swiftUISource
 }

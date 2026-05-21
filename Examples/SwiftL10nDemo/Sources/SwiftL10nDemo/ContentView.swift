@@ -43,8 +43,20 @@ private struct SourcePane: View {
 
     private var toolbar: some View {
         HStack(spacing: 12) {
-            Text("Swift Source")
-                .font(.headline)
+            // Framework picker
+            Picker("", selection: Binding(
+                get: { viewModel.sourceCode == ScanViewModel.uiKitSource ? 1 : 0 },
+                set: { idx in
+                    viewModel.sourceCode = idx == 0 ? ScanViewModel.swiftUISource : ScanViewModel.uiKitSource
+                    Task { await viewModel.scan() }
+                }
+            )) {
+                Text("SwiftUI").tag(0)
+                Text("UIKit").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 140)
+
             Spacer()
             HStack(spacing: 4) {
                 Text("Min confidence:")

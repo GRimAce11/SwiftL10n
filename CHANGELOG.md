@@ -10,6 +10,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.4.0] — 2026-05-21
+
+### Changed (breaking)
+
+- **`RuleEngine.default` now includes all SwiftUI + UIKit rules** — no `ruleEngine:` parameter
+  needed anywhere. `StringScanner()` detects strings from any project type automatically.
+- **Generated file renamed `Strings.swift` → `i18n.swift`** to match the `enum i18n { }` it contains.
+  Update your output path to `"\(projectPath)/Generated/i18n.swift"` and remove the old file from your Xcode target.
+- **`generateStrings()` `ruleEngine:` parameter removed** — the function signature is now just
+  `generateStrings(sourcesPath:outputPath:minimumConfidence:)`.
+
+### Removed
+
+- `RuleEngine.uikit` and `RuleEngine.full` presets — superseded by the unified `RuleEngine.default`.
+
+### Fixed
+
+- UIKit strings were not detected when calling `generateStrings()` without an explicit `ruleEngine:`
+  (the old default was SwiftUI-only).
+
+### Demo app
+
+- SwiftUI / UIKit segmented picker added — switch between fixtures to see both frameworks detected.
+- `StringRowView` badge colours updated for all UIKit `DetectionContext` cases.
+
+---
+
 ## [0.3.1] — 2026-05-21
 
 ### Added
@@ -111,7 +138,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.1...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.1.0...0.2.0

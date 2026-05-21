@@ -276,7 +276,7 @@ Localizable.xcstrings
 
 ### Using in a UIKit project (no ContentView)
 
-UIKit projects use different entry points but the same `scanStrings()` function. The only extra step compared to SwiftUI is passing `ruleEngine: .uikit` (or `.full` for mixed projects) to `StringsGenerator`.
+UIKit projects use different entry points but the same `scanStrings()` function. No extra configuration — the scanner detects SwiftUI and UIKit strings automatically.
 
 #### What UIKit patterns are detected
 
@@ -572,7 +572,7 @@ enum Strings {
 | `.confirmationDialog("…", isPresented:)` | `.confirmationDialog` | `.confirmationDialog("Choose", isPresented: $shown) {}` |
 | `.accessibilityLabel("…")` | `.accessibilityLabel` | `.accessibilityLabel("Close button")` |
 
-### UIKit — `RuleEngine.uikit` · Mixed — `RuleEngine.full`
+### UIKit — detected automatically alongside SwiftUI
 
 | Call site / assignment | `DetectionContext` | Example |
 |---|---|---|
@@ -627,7 +627,11 @@ struct SheetTitleRule: DetectionRule {
     }
 }
 
-let engine = RuleEngine(rules: RuleEngine.default.rules + [SheetTitleRule()])
+// Add your rule on top of all built-in SwiftUI + UIKit rules
+let engine = RuleEngine(
+    rules: RuleEngine.default.rules + [SheetTitleRule()],
+    assignmentRules: RuleEngine.default.assignmentRules
+)
 let scanner = StringScanner(ruleEngine: engine)
 ```
 
