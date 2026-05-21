@@ -10,6 +10,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.2.0] — 2026-05-21
+
+### Added
+
+- **`generateStrings(sourcesPath:outputPath:minimumConfidence:)`** — top-level async free function; call it from any SwiftUI view with two paths, no extra setup
+- **`StringsGenerator`** — high-level `Sendable` struct wrapping the full scan → infer → extract → generate → write pipeline; exposes `run() async throws -> Result`
+- **`CommonStringExtractor`** — detects string values shared across 2+ source files and lifts them into a dedicated `i18n.Common` namespace, generated once and usable everywhere; includes `ExtractionResult` with per-value origin map
+- **`--output` and `--min-confidence` CLI flags** — `swiftl10n scan Sources/ --output Strings.swift --min-confidence 0.85`
+- **Console scan output** — every detected string is printed during generation with context, confidence %, and interpolation warnings; common strings report shows which files they came from
+- **`SwiftL10nDemo` example app** — macOS 14 SwiftUI app in `Examples/SwiftL10nDemo/` with live scanner, confidence slider, and code generation preview; opens as both `.xcodeproj` and Swift Package
+- **Production Guide** — `Documentation/ProductionGuide.md` covering 13 steps from install through CI enforcement, custom rules, and incremental migration
+- **`ToggleRule`** — detects `Toggle("label", isOn:)` as the 9th built-in detection rule
+
+### Changed
+
+- **Code generation** — `static var … : String { … }` replaced with `static func …() -> String { … }` using `String(localized:table:bundle:comment:)` (modern Swift API, iOS 16+ / macOS 13+)
+- **`i18n.Common` always generated first** — shared strings appear at the top of `Strings.swift` before per-namespace extensions
+- **Platform support expanded** — package now declares iOS 13+, tvOS 13+, watchOS 6+, visionOS 1+ in addition to macOS 13+; resolves SwiftSyntax minimum version conflict when adding the package to iOS projects
+
+### Fixed
+
+- `FalsePositiveFilter` check ordering — reverse-DNS strings (`com.example.app`) now correctly return `.analyticsKey` instead of `.dotSeparatedIdentifier`; `SCREAMING_CASE` now correctly returns `.allCapsConstant` instead of `.snakeCaseIdentifier`
+- Demo app deployment target restored to macOS 14.0 (`@Observable` requirement)
+
+---
+
 ## [0.1.0] — 2026-05-21
 
 ### Added
@@ -47,5 +73,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/GRimAce11/SwiftL10n/releases/tag/0.1.0
