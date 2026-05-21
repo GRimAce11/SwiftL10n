@@ -130,11 +130,35 @@ public struct StringsGenerator: Sendable {
             let result = scanner.scan(source: source, filePath: url.lastPathComponent)
             warningCount += result.diagnostics.filter { $0.severity == .warning }.count
             guard !result.detectedStrings.isEmpty else { continue }
+
+            // Print every detected string as it is found
+            print("── \(url.lastPathComponent) (\(result.detectedStrings.count) string(s))")
+            for s in result.detectedStrings {
+                let pct  = String(format: "%.0f%%", s.confidence * 100)
+                let flag = s.hasInterpolation ? "  ⚠ interpolated — skipped in codegen" : ""
+                print("   [\(s.context.displayName)] \"\(s.value)\"  \(pct)\(flag)")
+            }
+
             fileResults.append((url.lastPathComponent, result.detectedStrings))
         }
 
+        // Infer per-file namespaces
         let namespaces = NamespaceInferrer().infer(from: fileResults)
-        let code       = CodeGenerator().generate(namespaces: namespaces)
+
+        // Extract strings shared across 2+ namespaces into i18n.Common
+        let extraction = CommonStringExtractor().extract(from: namespaces)
+
+        var allNamespaces = extraction.namespaces
+        if let common = extraction.common, !common.strings.isEmpty {
+            print("\n── Common strings (shared across multiple files → i18n.Common)")
+            for s in common.strings {
+                let from = extraction.origins[s.value]?.joined(separator: ", ") ?? ""
+                print("   \"\(s.value)\"  ← \(from)")
+            }
+            allNamespaces.insert(common, at: 0)
+        }
+
+        let code = CodeGenerator().generate(namespaces: allNamespaces)
 
         try FileManager.default.createDirectory(
             at: outputURL.deletingLastPathComponent(),
@@ -142,9 +166,13 @@ public struct StringsGenerator: Sendable {
         )
         try code.write(to: outputURL, atomically: true, encoding: .utf8)
 
+        let totalStrings = fileResults.flatMap(\.1).count
+        print("\n✓ \(totalStrings) string(s) found · \(allNamespaces.count) namespace(s) · \(warningCount) warning(s)")
+        print("✓ Written → \(outputURL.path)")
+
         return Result(
-            stringCount:    fileResults.flatMap(\.1).count,
-            namespaceCount: namespaces.count,
+            stringCount:    totalStrings,
+            namespaceCount: allNamespaces.count,
             warningCount:   warningCount,
             outputURL:      outputURL
         )

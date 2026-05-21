@@ -55,7 +55,13 @@ public struct CodeGenerator: Sendable {
         lines += rootEnumDeclaration()
         lines.append("")
 
-        for namespace in namespaces.sorted(by: { $0.name < $1.name }) {
+        // Common always first, then the rest alphabetically
+        let sorted = namespaces.sorted {
+            if $0.name == "Common" { return true  }
+            if $1.name == "Common" { return false }
+            return $0.name < $1.name
+        }
+        for namespace in sorted {
             lines += namespaceExtension(namespace)
         }
 
