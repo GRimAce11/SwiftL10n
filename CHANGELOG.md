@@ -10,6 +10,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.6.0] — 2026-05-21
+
+### Added
+
+- **`AssetCatalogParser`** — walks any `.xcassets` bundle and extracts all named image (`.imageset`) and color (`.colorset`) assets. Handles Xcode's `provides-namespace` group property so namespaced assets like `"Icons/profile_icon"` are resolved correctly. `.appiconset`, `.symbolset`, and `.dataset` entries are intentionally skipped — they are not accessed by name in user code. `findCatalogs(in:)` locates every `.xcassets` in a directory tree without recursing into bundles; `parseCatalogs(in:)` merges them into one.
+- **`AssetCatalog`** — `Sendable` model with `imageNames: Set<String>`, `colorNames: Set<String>`, `contains(image:)`, `contains(color:)`, `merged(_:)`, and `count`.
+- **`AssetScanner`** — SwiftSyntax visitor that detects named asset references in Swift source: `Image("name")`, `Image(decorative: "name")`, `Color("name")` (SwiftUI), `UIImage(named:)`, `UIColor(named:)` (UIKit). Does **not** apply `FalsePositiveFilter` — asset names are intentionally identifier-like and would be incorrectly rejected.
+- **`AssetScanner.validate(_:against:)`** — compares detected references to the parsed catalog and returns a `.warning` diagnostic for every name absent from the catalog. This is the key differentiator: SwiftGen and R.swift generate typed accessors *from* a catalog; SwiftL10n detects calls *to* a catalog and flags missing names — a gap neither tool covers.
+- **`DetectedAssetReference`**, **`AssetType`**, **`AssetContext`** — model types for the asset detection layer. `AssetContext` covers `swiftUIImage`, `swiftUIImageDecorative`, `swiftUIColor`, `uiImageNamed`, `uiColorNamed`.
+- **29 new tests** — `AssetCatalogParserTests` (imageset/colorset, appiconset/symbolset ignored, groups without namespace, groups with namespace, nested namespaces, `findCatalogs`, `merged`) and `AssetScannerTests` (all five call-site forms, `Image(systemName:)` excluded, interpolated names excluded, multi-reference file, fully-qualified `SwiftUI.Image`, validation pass/fail/partial). 252 total, 0 failures.
+
+---
+
 ## [0.5.2] — 2026-05-21
 
 ### Added
@@ -200,7 +213,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.2...0.6.0
 [0.5.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.1...0.5.0
