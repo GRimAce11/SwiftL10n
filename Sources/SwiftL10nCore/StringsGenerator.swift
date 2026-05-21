@@ -1,5 +1,41 @@
 import Foundation
 
+// MARK: - Top-level convenience function
+
+/// Scans every `.swift` file under `sourcesPath`, generates the `enum i18n { … }` scaffold,
+/// and writes it to `outputPath` — all in one call.
+///
+/// Attach to any view in your project, no extra setup required:
+///
+/// ```swift
+/// .task {
+///     try? await generateStrings(
+///         sourcesPath: "/path/to/Sources/MyApp",
+///         outputPath:  "/path/to/Sources/MyApp/Generated/Strings.swift"
+///     )
+/// }
+/// ```
+///
+/// - Parameters:
+///   - sourcesPath: Folder containing your `.swift` view files (scanned recursively).
+///   - outputPath:  Where `Strings.swift` will be written. Parent folder is created if needed.
+///   - minimumConfidence: Ignore strings below this score. Default `0.85`.
+/// - Returns: Summary — string count, namespace count, warning count, output URL.
+@discardableResult
+public func generateStrings(
+    sourcesPath: String,
+    outputPath: String,
+    minimumConfidence: Double = 0.85
+) async throws -> StringsGenerator.Result {
+    try await StringsGenerator(
+        sourcesPath: sourcesPath,
+        outputPath: outputPath,
+        minimumConfidence: minimumConfidence
+    ).run()
+}
+
+// MARK: -
+
 /// Scans a source directory and writes a `Strings.swift` enum in one call.
 ///
 /// Designed to be called with `await` from any SwiftUI view during development:

@@ -59,63 +59,37 @@ targets: [
 
 ---
 
-### 2. Replace your `ContentView` with this — change the two paths, run once
+### 2. Keep your `ContentView` exactly as it is — add two lines
+
+Open your existing `ContentView.swift` and add **one import** and **one `.task` modifier**. Nothing else changes.
 
 ```swift
 import SwiftUI
-import SwiftL10nCore
+import SwiftL10nCore          // ← add this import
 
 struct ContentView: View {
-
-    // ── Change these two lines ────────────────────────────────────────────
-    let sourcesPath = "/Users/you/Developer/YourApp/Sources/YourApp"
-    let outputPath  = "/Users/you/Developer/YourApp/Sources/YourApp/Generated/Strings.swift"
-    // ─────────────────────────────────────────────────────────────────────
-
-    @State private var isRunning = false
-    @State private var message   = "Tap to scan your project."
-    @State private var success   = false
-
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: success ? "checkmark.circle.fill" : "text.magnifyingglass")
-                .font(.system(size: 52))
-                .foregroundStyle(success ? .green : .secondary)
-
-            Text(message)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            if isRunning {
-                ProgressView("Scanning…")
-            } else {
-                Button("Scan & Generate Strings") {
-                    Task { await generate() }
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(40)
+        Text("Hello, World!")  // ← your existing view, untouched
+            .task { await scanStrings() }  // ← add this one line
     }
+}
 
-    private func generate() async {
-        isRunning = true
-        success   = false
-        message   = "Scanning…"
-        do {
-            let result = try await StringsGenerator(
-                sourcesPath: sourcesPath,
-                outputPath:  outputPath
-            ).run()
-            message = "✓ \(result.stringCount) strings across \(result.namespaceCount) namespace(s).\nStrings.swift written."
-            success = true
-        } catch {
-            message = "Error: \(error.localizedDescription)"
-        }
-        isRunning = false
+// ── Paste this function anywhere in your project (same file or separate file) ──
+
+private func scanStrings() async {
+    do {
+        let result = try await generateStrings(
+            sourcesPath: "/Users/you/Developer/YourApp/Sources/YourApp",          // ← change
+            outputPath:  "/Users/you/Developer/YourApp/Sources/YourApp/Generated/Strings.swift"  // ← change
+        )
+        print("✓ \(result.stringCount) strings · \(result.namespaceCount) namespace(s) → \(result.outputURL.lastPathComponent)")
+    } catch {
+        print("SwiftL10n error: \(error.localizedDescription)")
     }
 }
 ```
+
+Run the app once. Check the Xcode console for the `✓` confirmation line, then **remove `.task { await scanStrings() }`** — you only need it when regenerating.
 
 Your project layout after running:
 
