@@ -10,6 +10,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.4.1] — 2026-05-21
+
+### Fixed
+
+- **Duplicate function names in generated code** — strings like `"Continue"` and `"Continue →"` no longer produce two identically-named `static func` declarations (compile error). The cleaner string (fewest decorative characters) wins and is used as the localisation key; the decorated variant is silently dropped.
+- **Decorative characters (`→ ← ↑ ↓ • …`) added to the word-split separator list** — symbols like arrows are now stripped when building camelCase function names, so `"Next →"` correctly produces `nextButtonTitle()` instead of a name containing noise.
+
+### Added
+
+- `CodeGeneratorTests` — 6 tests covering deduplication, decorator stripping, and unique-name preservation.
+
+---
+
 ## [0.4.0] — 2026-05-21
 
 ### Changed (breaking)
@@ -138,7 +151,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.1...HEAD
+[0.4.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.2.0...0.3.0
