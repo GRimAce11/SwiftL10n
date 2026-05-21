@@ -63,7 +63,7 @@ Seven principles govern every design decision:
 
 ## Quick Start
 
-Add the package, paste the `ContentView` below, change two paths, run — `i18n.swift` is generated automatically.
+Add the package, add one line to your `ContentView`, change one path, run.
 
 ### 1. Add the package
 
@@ -73,11 +73,11 @@ Add the package, paste the `ContentView` below, change two paths, run — `i18n.
 https://github.com/GRimAce11/SwiftL10n.git
 ```
 
-Xcode shows two products in the picker. **Only add `SwiftL10nCore`:**
+Xcode shows two products. **Only add `SwiftL10nCore`:**
 
 | Product | What it is | Add to app? |
 |---|---|---|
-| `SwiftL10nCore` | The library — all scanning and generation API | **Yes ✓** |
+| `SwiftL10nCore` | The library — scanning, validation, and generation API | **Yes ✓** |
 | `swiftl10n` | A CLI terminal tool — not a library | No ✗ |
 
 **Package.swift:**
@@ -88,56 +88,40 @@ dependencies: [
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
-        .product(name: "SwiftL10nCore", package: "SwiftL10n"),  // ← only this one
+        .product(name: "SwiftL10nCore", package: "SwiftL10n"),
     ]),
 ]
 ```
 
 ---
 
-### 2. Keep your `ContentView` exactly as it is — add two lines
-
-Open your existing `ContentView.swift` and add **one import** and **one `.task` modifier**. Nothing else changes.
+### 2. Add one line to your `ContentView`
 
 ```swift
 import SwiftUI
-import SwiftL10nCore          // ← add this import
+import SwiftL10nCore
 
 struct ContentView: View {
     var body: some View {
-        Text("Hello, World!")  // ← your existing view, untouched
-            .task { await scanStrings() }  // ← add this one line
+        Text("Hello, World!")
+            .task {
+                #if DEBUG
+                let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"
+                try? await SwiftL10n.scan(projectPath: projectPath)
+                #endif
+            }
     }
-}
-
-// ── Paste this function anywhere in your project (same file or separate file) ──
-
-private func scanStrings() async {
-    #if DEBUG && !targetEnvironment(simulator) && !os(macOS)
-    print("SwiftL10n: skipped — run on Simulator or macOS to generate files")
-    #elseif DEBUG
-    let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"  // ← change only this
-
-    do {
-        // Generates i18n.swift — scans for localizable strings and missing asset warnings
-        let strings = try await generateStrings(
-            sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/i18n.swift"
-        )
-        print("✓ \(strings.stringCount) string(s) · \(strings.missingAssetCount) missing asset(s)")
-
-        // Generates Assets.swift — typed accessors for every asset in .xcassets
-        let assets = try await generateAssets(
-            sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/Assets.swift"
-        )
-        print("✓ \(assets.imageCount) image(s) · \(assets.colorCount) color(s)")
-    } catch {
-        print("SwiftL10n error: \(error.localizedDescription)")
-    }
-    #endif
 }
 ```
+
+`SwiftL10n.scan()` does everything in one call:
+- Scans all `.swift` files for localizable strings
+- Validates every `Image("…")` / `UIImage(named:)` reference against your `.xcassets` catalogs
+- Writes `Generated/i18n.swift` — typed localization API
+- Writes `Generated/Assets.swift` — typed asset API
+
+Run the app once on Simulator or macOS. The Xcode console prints every detected string, every missing asset warning, then confirms both files were written:
+
 
 Run the app once. The Xcode console prints every detected string, highlights shared ones, then confirms the file was written:
 
@@ -277,14 +261,7 @@ Toggle(i18n.Settings.pushNotificationsToggleLabel(), isOn: $on)
 
 ### 5. Generate `Assets.swift` from your catalogs
 
-Add `generateAssets()` to the same `scanStrings()` function — no extra configuration needed:
-
-```swift
-try? await generateAssets(
-    sourcesPath: projectPath,
-    outputPath:  "\(projectPath)/Generated/Assets.swift"
-)
-```
+`SwiftL10n.scan()` generates `Assets.swift` automatically — nothing extra to configure. If you need asset generation only, or want a custom output path:
 
 SwiftL10n walks every `.xcassets` bundle near `sourcesPath`, merges them, and emits a typed file:
 
@@ -361,7 +338,7 @@ Assets.Theme.primaryBlue()
 
 ### Using in a UIKit project (no ContentView)
 
-UIKit projects use different entry points but the same `scanStrings()` function. No extra configuration — the scanner detects SwiftUI and UIKit strings automatically.
+UIKit projects use different entry points but the same `SwiftL10n.scan()` call. No extra configuration — the scanner detects SwiftUI and UIKit strings automatically.
 
 #### What UIKit patterns are detected
 
@@ -376,7 +353,7 @@ UIKit projects use different entry points but the same `scanStrings()` function.
 | `UIBarButtonItem(title: "…", …)` | `.uiButtonTitle` |
 | `UITabBarItem(title: "…", …)` | `.uiTabBarItem` |
 
-#### Option A — `AppDelegate` (runs once on launch)
+#### Option A — `AppDelegate`
 
 ```swift
 import UIKit
@@ -389,33 +366,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-
-        Task { await scanStrings() }   // ← add this line
-
+        #if DEBUG
+        let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
+        Task { try? await SwiftL10n.scan(projectPath: projectPath) }
+        #endif
         return true
     }
-}
-
-// ── Paste this function anywhere in your project ───────────────────────────
-private func scanStrings() async {
-    #if DEBUG && !targetEnvironment(simulator) && !os(macOS)
-    print("SwiftL10n: skipped — run on Simulator or macOS to generate files")
-    #elseif DEBUG
-    let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
-
-    do {
-        try await generateStrings(
-            sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/i18n.swift"
-        )
-        try await generateAssets(
-            sourcesPath: projectPath,
-            outputPath:  "\(projectPath)/Generated/Assets.swift"
-        )
-    } catch {
-        print("SwiftL10n error: \(error.localizedDescription)")
-    }
-    #endif
 }
 ```
 
@@ -429,7 +385,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
-        Task { await scanStrings() }   // ← add this line
+        #if DEBUG
+        let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
+        Task { try? await SwiftL10n.scan(projectPath: projectPath) }
+        #endif
     }
 }
 ```
@@ -441,12 +400,15 @@ class RootViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        Task { await scanStrings() }   // ← add this line
+        #if DEBUG
+        let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
+        Task { try? await SwiftL10n.scan(projectPath: projectPath) }
+        #endif
     }
 }
 ```
 
-> **Remove the `Task { await scanStrings() }` line** after `i18n.swift` is generated.
+> **Remove the `SwiftL10n.scan()` call** after your generated files are in Xcode. You only need it when regenerating.
 >
 > **Sandbox error on iOS?** App Sandbox is macOS-only — iOS has no toggle. Run on **Simulator** (not a real device) and the write will succeed without any settings change.
 
@@ -648,7 +610,26 @@ The cache is stored at `.build/swiftl10n-cache.json` (already gitignored in SPM 
 
 ## Programmatic API
 
-### Scan a source string
+### Primary entry point
+
+```swift
+import SwiftL10nCore
+
+// Minimal — both files written to projectPath/Generated/
+try await SwiftL10n.scan(projectPath: "/path/to/Sources/YourApp")
+
+// With options
+let result = try await SwiftL10n.scan(
+    projectPath:       "/path/to/Sources/YourApp",
+    stringsOutput:     "/path/to/Sources/YourApp/Generated/i18n.swift",
+    assetsOutput:      "/path/to/Sources/YourApp/Generated/Assets.swift",
+    minimumConfidence: 0.9,
+    generateAssets:    true
+)
+print("\(result.strings.stringCount) string(s) · \(result.assets?.imageCount ?? 0) image(s)")
+```
+
+### Scan a source string (low-level)
 
 ```swift
 import SwiftL10nCore
