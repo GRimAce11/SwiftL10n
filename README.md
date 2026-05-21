@@ -20,19 +20,23 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 
 ## Design Philosophy
 
-SwiftL10n is **source-aware infrastructure validation tooling**. The design is governed by six principles that will not change:
+SwiftL10n is **source-aware infrastructure validation and generation tooling**. It reads your Swift source, cross-references it against your project's infrastructure, and emits additive, deterministic output. It does not rewrite source, does not speculate, and does not mutate files outside of an explicit `swiftl10n scan` invocation.
 
-**1. Source-driven analysis.** The Swift source file is always the input. SwiftL10n reads your code and validates it against infrastructure (catalogs, string tables). It does not read infrastructure and generate source.
+Seven principles govern every design decision:
 
-**2. Validation first, generation second.** The primary value is catching errors — `Image("missing_icon")` that will crash at runtime, a localization key used in code that isn't in any `.xcstrings` file. Code generation is a byproduct of the same parsed data, not the primary goal.
+**1. Source-driven analysis.** The Swift source file is always the input. SwiftL10n reads your code and validates it against infrastructure (catalogs, string tables). Infrastructure generates typed accessors as a byproduct of the same analysis — never as the primary goal.
 
-**3. Additive generation only.** Generated files (`i18n.swift`, `Assets.swift`) supplement your project. SwiftL10n never rewrites your source, never mutates files during a build, and never modifies infrastructure you own.
+**2. Validation first, generation second.** The primary value is catching errors before they reach production: `Image("missing_icon")` that crashes at runtime, a localization key present in source but absent from the string catalog. Code generation is additive output derived from the same analysis pass.
 
-**4. Deterministic and explainable.** Same inputs always produce the same outputs. Every diagnostic has a traceable reason. Heuristics are documented. There is no "magic" confidence score — every delta is described in the source.
+**3. Additive generation only.** Generated files (`i18n.swift`, `Assets.swift`) supplement your project. They are never required for compilation, never modify existing source, and can be regenerated identically at any time. Deleting them has no effect on your codebase.
 
-**5. Trust through precision.** One false positive costs more developer trust than ten missed detections. The FalsePositiveFilter exists for this reason. When uncertain, SwiftL10n stays silent rather than guessing.
+**4. Deterministic and explainable.** The same inputs always produce the same outputs on every machine, in every environment, in every CI run. Every diagnostic has a documented, traceable reason — an enumerated case in `FalsePositiveFilter`, a concrete delta in `ConfidenceScorer`. There are no black-box classifiers.
 
-**6. Separation of concerns.** Localization infrastructure and asset infrastructure are generated into separate files and through separate pipelines. `i18n.Settings.title()` resolves through the NSBundle translation layer. `Assets.profileIcon()` loads a pixel buffer from the asset catalog. These are different operations and must not share a generated namespace.
+**5. Trust through precision.** One false positive costs more developer trust than ten missed detections. SwiftL10n stays silent when uncertain. The FalsePositiveFilter is conservative by design. Confidence thresholds are configurable. Diagnostics are suppressible. Trust is earned by being right, not by being loud.
+
+**6. CI-safe by default.** No file is written during a build. No source is modified without an explicit command. `--format json` and `--fail-on` make SwiftL10n composable with any CI pipeline without side effects.
+
+**7. Separation of concerns.** Localization infrastructure (`i18n.swift`) and asset infrastructure (`Assets.swift`) are generated through separate, independent pipelines. `i18n.Settings.title()` resolves through the NSBundle translation layer at runtime. `Assets.profileIcon()` loads a pixel buffer from the asset catalog. These operations have different semantics, different failure modes, and must never share a generated namespace.
 
 ---
 
@@ -888,6 +892,28 @@ For every `FunctionCallExprSyntax` and `SequenceExprSyntax` (property assignment
 
 ---
 
+## Source-Aware Infrastructure Validation
+
+Most iOS code generation tools work in one direction: they read your project's infrastructure — asset catalogs, string tables, storyboards — and generate typed Swift accessors from it. This is useful. SwiftL10n does this too.
+
+The difference is the other direction.
+
+SwiftL10n reads your **source code** and validates it against your **infrastructure**. When your code says `Image("profile_icon")`, SwiftL10n checks whether `profile_icon.imageset` actually exists in your asset catalog. When `generateStrings()` runs during development, it scans every `Image(…)`, `Color(…)`, `UIImage(named:)`, and `UIColor(named:)` call alongside the localization scan, cross-references them against every `.xcassets` catalog it finds, and warns about any name that does not exist — before any runtime crash occurs.
+
+| Tool | Catalog → Code | Source → Catalog validation |
+|---|---|---|
+| SwiftGen | ✓ Typed accessors generated from catalog | ✗ Does not check how source references the catalog |
+| R.swift | ✓ Typed accessors generated from catalog | ✗ Does not check how source references the catalog |
+| **SwiftL10n** | ✓ Typed accessors generated from catalog | ✓ **Validates source references against catalog** |
+
+SwiftGen and R.swift solve a different problem: they make invalid asset references compile errors by replacing string literals with typed constants. That is a valid and useful approach. SwiftL10n's validation layer solves a different class of failure — the asset reference that compiles fine, passes every test, ships to the App Store, and then silently fails to render because the catalog name was misspelled or the asset was deleted after the typed accessor was written.
+
+The two approaches are complementary. SwiftL10n does not replace SwiftGen or R.swift. It adds a usage-analysis layer that works from the other direction.
+
+The same principle applies to localization: SwiftL10n knows which string keys your code uses and can report which ones are absent from the catalog. Source usage analysis is the layer that existing tooling does not provide.
+
+---
+
 ## Current Status
 
 **v0.6.1 — Production stable.**
@@ -917,38 +943,88 @@ Two infrastructure domains are active:
 
 ## Roadmap
 
-SwiftL10n follows a deliberate, phase-gated roadmap. Each phase must be proven stable before the next begins.
+SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a prerequisite for the next. Scope is intentionally narrow — each phase solves one problem well rather than several problems partially.
 
-| Version | Theme | Status |
+| Version | Focus | Status |
 |---|---|---|
-| v0.1 – v0.4.x | Localization scanning, UIKit + SwiftUI detection, confidence scoring, code generation | Released |
-| v0.5.x | Config files, ScanPipeline, JSON output, incremental cache, GlobMatcher | Released |
-| v0.6.0 | Asset catalog parsing, source-to-catalog validation, missing asset diagnostics | Released |
-| v0.6.1 | Typed `Assets.swift` generation — namespace-aware, deterministic, validated against catalog | Released |
-| v0.7 | Diagnostics ergonomics: inline suppression, fix suggestions, confidence explanations, GitHub Actions output | Planned |
-| v0.8 | Performance: large-project benchmarking, parallel scanning, incremental cache hardening, multi-module support | Planned |
-| v0.9 | Resource consistency: accessibility diagnostics, duplicate localization analysis, `.xcstrings` key validation | Planned |
-| v1.0 | Stable public API contracts, semantic versioning guarantees, Swift Package Index integration | Planned |
+| v0.1 – v0.4.x | Localization infrastructure foundation: SwiftUI + UIKit detection, confidence scoring, false-positive filtering, `i18n.swift` generation | Released |
+| v0.5.x | Developer workflow: `.swiftl10n.yml` config, `ScanPipeline`, JSON diagnostics, incremental SHA-256 cache | Released |
+| v0.6.0 | Asset infrastructure foundation: `.xcassets` catalog parsing, source-to-catalog cross-reference, missing asset diagnostics | Released |
+| v0.6.1 | Asset code generation: namespace-aware `Assets.swift` from catalog; integrated asset validation in `generateStrings()` | Released |
+| v0.7 | Diagnostics ergonomics: `// swiftl10n:ignore` suppression, fix suggestions, confidence explanations in `--verbose`, GitHub Actions annotation format, `ImageResource` opt-in for iOS 16+ projects | Planned |
+| v0.8 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
+| v0.9 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
+| v1.0 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
 
-Phases are additive. Nothing released in an earlier phase is removed or broken in a later one.
+Each phase is additive. APIs released in earlier phases are not removed in later ones without a major version bump.
+
+**What will not appear on this roadmap:** automatic source rewriting, design token inference, generic constants generation, build-time mutations, or any feature that requires semantic type analysis that SwiftSyntax cannot provide. See [Permanent Architectural Boundaries](#permanent-architectural-boundaries).
 
 ---
 
-## What SwiftL10n Will Never Do
+## Why SwiftL10n Never Rewrites Your Source
 
-These are permanent boundaries. They exist because violating them would compromise the tool's reliability and developer trust.
+This is not a limitation. It is an architectural boundary, and the reasoning is worth understanding.
 
-**Never rewrite your source code.** SwiftL10n reads source; it does not modify it. Any feature that would change a `.swift` file automatically — even with a preview — is out of scope. The tool has no type information and no semantic understanding of your business logic. Automated source mutation without type information produces incorrect code.
+### Namespace inference is a global problem
 
-**Never infer design tokens from magic numbers.** Detecting `.cornerRadius(16)` and suggesting a `DesignSystem.cornerRadius.medium` constant is speculative. The same literal appears in completely different semantic contexts. False-positive rates would be too high to be useful and too high to be trusted.
+Replacing `Text("Save")` with a typed call looks straightforward. It is not, because the correct replacement cannot be determined at a single call site:
 
-**Never generate from speculative heuristics.** Every generated identifier — localization function, asset accessor — is derived from a concrete, existing artifact: a detected string literal or a named asset in a catalog. Nothing is invented.
+```swift
+// "Save" appears in SettingsView.swift, HomeView.swift, and ProfileView.swift.
+// CommonStringExtractor promotes it to i18n.Common.
+// The correct replacement everywhere is:
+Text(i18n.Common.save())
 
-**Never mutate files during a build phase.** Writing to disk only happens when you explicitly run `swiftl10n scan`. SwiftL10n is a development tool, not a build system plugin that silently modifies files mid-compile.
+// But if "Save" only appeared in SettingsView.swift, it would stay in its namespace.
+// The correct replacement would be:
+Text(i18n.Settings.save())
+```
 
-**Never become a generic constants generator.** Typed wrappers for colors, fonts, spacing, and other design tokens are legitimate problems, but they require a design system contract that SwiftL10n does not have access to. A tool that tries to solve every project infrastructure problem solves none of them well.
+The destination namespace is determined by the **full project scan result** — the set of all other occurrences of the same string, the outcome of common-string extraction, and the file-to-namespace mapping from `NamespaceInferrer`. None of this information is available at a single call site. A tool that rewrites files individually, without the full scan result, generates wrong code. A tool that completes the full scan and then rewrites files is making permanent changes to production source based on analysis the developer has not reviewed.
 
-**Never merge localization and asset namespaces.** `i18n.Assets.profileIcon` will never exist. Localization keys resolve through the translation layer at runtime; asset names load pixel buffers from the catalog. They are different operations with different failure modes and must remain in separate generated files.
+### Type incompatibility is silent
+
+SwiftUI's `Text` initializer has multiple overloads. One accepts `LocalizedStringKey`; another accepts `String`. The generated `i18n.Settings.save()` returns `String`. These are not interchangeable:
+
+```swift
+Text("Save")                     // LocalizedStringKey — integrates with Xcode string extraction
+Text(i18n.Settings.save())       // String — different type, different runtime path
+```
+
+Replacing one with the other changes the type of the expression without a compiler error. The behavior difference may be subtle — extraction tooling stops seeing the key, runtime fallback behavior changes — and it will not be caught by most test suites. SwiftSyntax cannot determine which overload a call site resolves to without full type information. Full type information requires a running Swift compiler.
+
+Custom view initializers, modifier chains, and function overloads compound this problem. Every call site in every project requires independent semantic verification. This does not reduce to a pattern-matching exercise.
+
+### What SwiftL10n does instead
+
+SwiftL10n generates `i18n.swift` — the complete, correct, type-safe API — and stops there. The developer applies replacements intentionally, one file at a time, using Xcode autocomplete:
+
+1. Run `swiftl10n scan` (or `generateStrings()` once during development)
+2. Drag `Generated/i18n.swift` into your Xcode project
+3. Navigate to a file with hardcoded strings
+4. Type `i18n.` where a `String` is accepted — Xcode autocompletes the namespace and function name
+5. The compiler confirms the replacement is type-correct
+
+This takes minutes per file, is verifiably correct at every step, and gives the developer full understanding of every change. The generated API is the scaffolding; the developer is the one who applies it.
+
+---
+
+## Permanent Architectural Boundaries
+
+These constraints are not scheduled features. They are permanent decisions that protect the tool's correctness and the developer's trust.
+
+**No automatic source rewriting.** SwiftL10n reads source; it does not modify it. See [Why SwiftL10n Never Rewrites Your Source](#why-swiftl10n-never-rewrites-your-source).
+
+**No design token inference.** Detecting `.cornerRadius(16)` and suggesting `DesignSystem.cornerRadius.medium` is speculative. The same literal appears in unrelated semantic contexts throughout any real project. Precision is not achievable at scale, and an imprecise design token tool causes more harm than no tool.
+
+**No build-time mutations.** Files are written only when you explicitly run `swiftl10n scan` or call `generateStrings()`. SwiftL10n is a development workflow tool. Hidden file modifications during compilation are unacceptable regardless of how useful the modification would be.
+
+**No opaque heuristics.** Every diagnostic has a documented, traceable reason. `FalsePositiveFilter` exclusions are enumerated cases. Confidence scores are additive delta models with documented deltas. Nothing is a black box.
+
+**No generic constants generation.** Typed wrappers for fonts, spacing, and arbitrary project values require a design system contract SwiftL10n does not have. A tool that reaches for problems outside its domain solves none of them reliably.
+
+**No merged infrastructure namespaces.** `i18n.Assets.profileIcon` will never exist. Localization keys and asset names have different runtime semantics, different failure modes, and different generation pipelines. They must remain in separate generated files.
 
 ---
 
