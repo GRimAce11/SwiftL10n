@@ -3,9 +3,10 @@ import Foundation
 // MARK: - Top-level convenience function
 
 /// Scans every `.swift` file under `sourcesPath`, generates the `enum i18n { … }` scaffold,
-/// and writes it to `outputPath` — all in one call.
+/// writes it to `outputPath`, and validates all `Image("…")` / `Color("…")` / `UIImage(named:)`
+/// calls against any `.xcassets` catalogs found near `sourcesPath`.
 ///
-/// Attach to any view in your project, no extra setup required:
+/// All of this happens in a single call — no extra setup required:
 ///
 /// ```swift
 /// .task {
@@ -21,7 +22,7 @@ import Foundation
 ///   - sourcesPath: Folder containing your `.swift` view files (scanned recursively).
 ///   - outputPath:  Where `i18n.swift` will be written. Parent folder is created if needed.
 ///   - minimumConfidence: Ignore strings below this score. Default `0.85`.
-/// - Returns: Summary — string count, namespace count, warning count, output URL.
+/// - Returns: Summary — string count, namespace count, warning count, missing asset count, output URL.
 @discardableResult
 public func generateStrings(
     sourcesPath: String,
@@ -37,15 +38,19 @@ public func generateStrings(
 
 // MARK: -
 
-/// Scans a source directory and writes a `i18n.swift` enum in one call.
+/// Scans a source directory, validates asset references, and writes a `i18n.swift` enum in one call.
 ///
-/// Designed to be called with `await` from any SwiftUI view during development:
+/// - Localization: detects every hardcoded SwiftUI/UIKit string, infers namespaces, generates `i18n.swift`.
+/// - Asset validation: discovers `.xcassets` catalogs near `sourcesPath`, cross-references every
+///   `Image("…")`, `Color("…")`, `UIImage(named:)`, and `UIColor(named:)` call, and prints a warning
+///   for each name absent from the catalog. No separate setup needed.
 ///
 /// ```swift
 /// let result = try await StringsGenerator(
 ///     sourcesPath: "/path/to/Sources/MyApp",
 ///     outputPath:  "/path/to/Sources/MyApp/Generated/i18n.swift"
 /// ).run()
+/// print("\(result.missingAssetCount) missing asset(s)")
 /// ```
 public struct StringsGenerator: Sendable {
 
@@ -58,6 +63,9 @@ public struct StringsGenerator: Sendable {
         public let namespaceCount: Int
         /// Number of interpolated strings that need manual attention.
         public let warningCount: Int
+        /// Number of asset references (`Image("…")` etc.) not found in any `.xcassets` catalog.
+        /// `0` when no catalogs are present (no validation is attempted).
+        public let missingAssetCount: Int
         /// File URL of the written `i18n.swift`.
         public let outputURL: URL
     }
@@ -123,10 +131,7 @@ public struct StringsGenerator: Sendable {
 
     // MARK: - Run
 
-    /// Scans every `.swift` file under `sourcesPath`, generates the `enum Strings { … }` scaffold,
-    /// writes it to `outputPath`, and returns a summary.
-    ///
-    /// Runs on a background thread — safe to call with `await` from the main actor.
+    /// Scan, validate assets, generate, and write. Runs on a background thread.
     public func run() async throws -> Result {
         let copy = self
         return try await Task.detached(priority: .userInitiated) {
@@ -145,31 +150,61 @@ public struct StringsGenerator: Sendable {
             throw GeneratorError.sourceDirectoryNotFound(sourcesURL.path)
         }
 
-        let scanner = StringScanner(ruleEngine: ruleEngine, minimumConfidence: minimumConfidence)
+        // ── Discover asset catalogs near sourcesURL ────────────────────────
+        let catalog = discoverCatalog(from: sourcesURL)
+        let assetScanner: AssetScanner? = catalog.count > 0 ? AssetScanner() : nil
+
+        // ── Scan files ────────────────────────────────────────────────────
+        let locScanner = StringScanner(ruleEngine: ruleEngine, minimumConfidence: minimumConfidence)
         var fileResults: [(String, [DetectedString])] = []
         var warningCount = 0
+        var missingAssets: [Diagnostic] = []
 
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             let source = try String(contentsOf: url, encoding: .utf8)
-            let result = scanner.scan(source: source, filePath: url.lastPathComponent)
-            warningCount += result.diagnostics.filter { $0.severity == .warning }.count
-            guard !result.detectedStrings.isEmpty else { continue }
 
-            // Print every detected string as it is found
-            print("── \(url.lastPathComponent) (\(result.detectedStrings.count) string(s))")
-            for s in result.detectedStrings {
+            // Localization scan
+            let locResult = locScanner.scan(source: source, filePath: url.lastPathComponent)
+            warningCount += locResult.diagnostics.filter { $0.severity == .warning }.count
+            guard !locResult.detectedStrings.isEmpty else { continue }
+
+            print("── \(url.lastPathComponent) (\(locResult.detectedStrings.count) string(s))")
+            for s in locResult.detectedStrings {
                 let pct  = String(format: "%.0f%%", s.confidence * 100)
                 let flag = s.hasInterpolation ? "  ⚠ interpolated — skipped in codegen" : ""
                 print("   [\(s.context.displayName)] \"\(s.value)\"  \(pct)\(flag)")
             }
 
-            fileResults.append((url.lastPathComponent, result.detectedStrings))
+            fileResults.append((url.lastPathComponent, locResult.detectedStrings))
+
+            // Asset validation (same source, no extra file I/O)
+            if let assetScanner {
+                let assetResult = assetScanner.scan(source: source, filePath: url.lastPathComponent)
+                missingAssets.append(contentsOf: assetScanner.validate(assetResult, against: catalog))
+            }
         }
 
-        // Infer per-file namespaces
-        let namespaces = NamespaceInferrer().infer(from: fileResults)
+        // ── Asset validation report ───────────────────────────────────────
+        if catalog.count > 0 {
+            let catalogNames = assetCatalogNames(from: sourcesURL)
+            let header = catalogNames.isEmpty
+                ? "Asset validation (\(catalog.count) asset(s))"
+                : "Asset validation (\(catalog.count) asset(s) · \(catalogNames.joined(separator: ", ")))"
 
-        // Extract strings shared across 2+ namespaces into i18n.Common
+            if missingAssets.isEmpty {
+                print("\n── \(header)")
+                print("   ✓ All asset references resolved")
+            } else {
+                print("\n── \(header)")
+                for d in missingAssets {
+                    let loc = d.location.map { "  [\($0.file):\($0.line)]" } ?? ""
+                    print("   ⚠ \(d.message)\(loc)")
+                }
+            }
+        }
+
+        // ── Namespace inference + common extraction + codegen ─────────────
+        let namespaces = NamespaceInferrer().infer(from: fileResults)
         let extraction = CommonStringExtractor().extract(from: namespaces)
 
         var allNamespaces = extraction.namespaces
@@ -201,13 +236,58 @@ public struct StringsGenerator: Sendable {
         }
 
         let totalStrings = fileResults.flatMap(\.1).count
-        print("✓ \(totalStrings) string(s) found · \(allNamespaces.count) namespace(s) · \(warningCount) warning(s)")
+        print("✓ \(totalStrings) string(s) · \(allNamespaces.count) namespace(s) · \(warningCount) warning(s) · \(missingAssets.count) missing asset(s)")
 
         return Result(
-            stringCount:    totalStrings,
-            namespaceCount: allNamespaces.count,
-            warningCount:   warningCount,
-            outputURL:      outputURL
+            stringCount:       totalStrings,
+            namespaceCount:    allNamespaces.count,
+            warningCount:      warningCount,
+            missingAssetCount: missingAssets.count,
+            outputURL:         outputURL
         )
+    }
+
+    // MARK: - Asset catalog discovery
+
+    /// Walk up from `startURL` (up to 3 levels) collecting all `.xcassets` bundles,
+    /// parse them, and return a merged catalog. Returns an empty catalog if none found.
+    ///
+    /// Covers the most common Xcode/SPM project layouts:
+    ///   Sources/YourApp/Assets.xcassets       (level 0)
+    ///   Sources/Assets.xcassets               (level 1)
+    ///   YourApp/Assets.xcassets               (level 2, standard Xcode project)
+    private func discoverCatalog(from startURL: URL) -> AssetCatalog {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var search = startURL
+        var catalogURLs: [URL] = []
+
+        for _ in 0..<3 {
+            catalogURLs.append(contentsOf: AssetCatalogParser.findCatalogs(in: search))
+            if search.resolvingSymlinksInPath().path == home.resolvingSymlinksInPath().path { break }
+            let parent = search.deletingLastPathComponent()
+            if parent.path == search.path { break }
+            search = parent
+        }
+
+        let parsed = catalogURLs.compactMap { try? AssetCatalogParser.parse(catalogURL: $0) }
+        return AssetCatalog.merged(parsed)
+    }
+
+    /// Returns the last-path-component names of all catalogs found near `startURL`.
+    private func assetCatalogNames(from startURL: URL) -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var search = startURL
+        var names: [String] = []
+
+        for _ in 0..<3 {
+            names.append(contentsOf:
+                AssetCatalogParser.findCatalogs(in: search).map(\.lastPathComponent)
+            )
+            if search.resolvingSymlinksInPath().path == home.resolvingSymlinksInPath().path { break }
+            let parent = search.deletingLastPathComponent()
+            if parent.path == search.path { break }
+            search = parent
+        }
+        return names
     }
 }
