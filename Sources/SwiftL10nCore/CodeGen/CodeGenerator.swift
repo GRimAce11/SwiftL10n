@@ -91,15 +91,18 @@ public struct CodeGenerator: Sendable {
         lines.append("    enum \(namespace.name) {")
 
         for string in namespace.strings where !string.hasInterpolation {
-            let propName = propertyName(for: string)
-            lines.append("        static var \(propName): String {")
+            let funcName = propertyName(for: string)
+            let comment  = "\(namespace.name): \(string.context.displayName) — \(escaped(string.value))"
+            lines.append("        /// \"\(escaped(string.value))\"")
+            lines.append("        static func \(funcName)() -> String {")
             lines.append("            String(")
             lines.append("                localized: \"\(escaped(string.value))\",")
             lines.append("                table: General.table,")
             lines.append("                bundle: General.bundle,")
-            lines.append("                comment: \"\(namespace.name) \(string.context.displayName) — \(escaped(string.value))\"")
+            lines.append("                comment: \"\(comment)\"")
             lines.append("            )")
             lines.append("        }")
+            lines.append("")
         }
 
         lines.append("    }")
