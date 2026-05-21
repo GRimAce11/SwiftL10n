@@ -84,6 +84,7 @@ struct ContentView: View {
 // ── Paste this function anywhere in your project (same file or separate file) ──
 
 private func scanStrings() async {
+    #if DEBUG
     let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"  // ← change only this
 
     do {
@@ -95,6 +96,7 @@ private func scanStrings() async {
     } catch {
         print("SwiftL10n error: \(error.localizedDescription)")
     }
+    #endif
 }
 ```
 
@@ -123,6 +125,12 @@ Run the app once. The Xcode console prints every detected string, highlights sha
 ✓ 10 string(s) found · 4 namespace(s) · 0 warning(s)
 ✓ Written → .../Sources/YourApp/Generated/Strings.swift
 ```
+
+> **Sandbox error?** If you see *"You don't have permission to save the file…"*:
+> 1. Xcode → Your Target → **Signing & Capabilities** → **App Sandbox** → untick **Enable App Sandbox**, or
+> 2. Keep the sandbox and add **File Access → User Selected Files → Read/Write**
+>
+> The `#if DEBUG` guard in `scanStrings()` already ensures this code never runs in a release build.
 
 **Remove `.task { await scanStrings() }`** after it runs — you only need it when regenerating.
 

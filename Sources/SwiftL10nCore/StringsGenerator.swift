@@ -66,11 +66,31 @@ public struct StringsGenerator: Sendable {
 
     public enum GeneratorError: Error, LocalizedError {
         case sourceDirectoryNotFound(String)
+        case permissionDenied(String)
 
         public var errorDescription: String? {
             switch self {
             case .sourceDirectoryNotFound(let path):
                 return "Source directory not found at: \(path)"
+            case .permissionDenied(let path):
+                return """
+                Permission denied — cannot write to: \(path)
+
+                This is caused by the App Sandbox. Fix it with one of these options:
+
+                Option 1 (recommended for dev tools):
+                  Xcode → Your Target → Signing & Capabilities
+                  → App Sandbox → uncheck "Enable App Sandbox"
+
+                Option 2 (keep sandbox, grant file access):
+                  Xcode → Your Target → Signing & Capabilities
+                  → App Sandbox → File Access → User Selected Files → Read/Write
+
+                Option 3 (safest — wrap the call so it never runs in production):
+                  #if DEBUG
+                  Task { await scanStrings() }
+                  #endif
+                """
             }
         }
     }
@@ -161,11 +181,18 @@ public struct StringsGenerator: Sendable {
 
         let code = CodeGenerator().generate(namespaces: allNamespaces)
 
-        try FileManager.default.createDirectory(
-            at: outputURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try code.write(to: outputURL, atomically: true, encoding: .utf8)
+        do {
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try code.write(to: outputURL, atomically: true, encoding: .utf8)
+        } catch let error as NSError
+            where error.domain == NSCocoaErrorDomain
+               && [NSFileWriteNoPermissionError,
+                   NSFileReadNoPermissionError].contains(error.code) {
+            throw GeneratorError.permissionDenied(outputURL.path)
+        }
 
         let totalStrings = fileResults.flatMap(\.1).count
         print("\n✓ \(totalStrings) string(s) found · \(allNamespaces.count) namespace(s) · \(warningCount) warning(s)")
