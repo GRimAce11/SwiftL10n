@@ -38,11 +38,18 @@ Add the package, paste the `ContentView` below, change two paths, run — `Strin
 
 ### 1. Add the package
 
-**Xcode:** File → Add Package Dependencies → paste the URL → add `SwiftL10nCore` to your target.
+**Xcode:** File → Add Package Dependencies → paste the URL:
 
 ```
 https://github.com/GRimAce11/SwiftL10n.git
 ```
+
+Xcode shows two products in the picker. **Only add `SwiftL10nCore`:**
+
+| Product | What it is | Add to app? |
+|---|---|---|
+| `SwiftL10nCore` | The library — all scanning and generation API | **Yes ✓** |
+| `swiftl10n` | A CLI terminal tool — not a library | No ✗ |
 
 **Package.swift:**
 
@@ -52,7 +59,7 @@ dependencies: [
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
-        .product(name: "SwiftL10nCore", package: "SwiftL10n"),
+        .product(name: "SwiftL10nCore", package: "SwiftL10n"),  // ← only this one
     ]),
 ]
 ```
@@ -288,9 +295,11 @@ result.detectedStrings.forEach { print("[\($0.context.displayName)] \"\($0.value
 
 ## Installation
 
-### Swift Package Manager
+This package ships two products. You only ever need one of them depending on how you want to use it.
 
-Add SwiftL10n to your `Package.swift`:
+### `SwiftL10nCore` — library for your app
+
+Add to your `Package.swift`:
 
 ```swift
 dependencies: [
@@ -298,17 +307,19 @@ dependencies: [
 ],
 targets: [
     .target(
-        name: "YourTarget",
+        name: "YourApp",
         dependencies: [
-            .product(name: "SwiftL10nCore", package: "SwiftL10n"),
+            .product(name: "SwiftL10nCore", package: "SwiftL10n"),  // ← only this
         ]
     ),
 ]
 ```
 
-Or via Xcode: **File → Add Package Dependencies**, enter the repository URL, and add `SwiftL10nCore` to your target.
+Or in Xcode: **File → Add Package Dependencies** → enter the URL → when the product picker appears, tick **only `SwiftL10nCore`** and leave `swiftl10n` unticked.
 
-### CLI (build from source)
+### `swiftl10n` — optional CLI tool (terminal only, never add to an app)
+
+If you prefer to run scans from the terminal instead of calling the API from code:
 
 ```bash
 git clone https://github.com/GRimAce11/SwiftL10n.git
@@ -316,6 +327,12 @@ cd SwiftL10n
 swift build -c release
 cp .build/release/swiftl10n /usr/local/bin/
 ```
+
+```bash
+swiftl10n scan Sources/ --output Sources/Generated/Strings.swift
+```
+
+The CLI is a separate executable that wraps `SwiftL10nCore`. It is never imported into your app — if you see it in Xcode's product picker, leave it unticked.
 
 ---
 
