@@ -10,6 +10,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.3.1] — 2026-05-21
+
+### Added
+
+- `ruleEngine` parameter on `generateStrings(sourcesPath:outputPath:ruleEngine:)` and `StringsGenerator.init` — pass `.uikit` or `.full` without constructing a scanner manually
+
+### Changed
+
+- README Detection rules section split into SwiftUI (`RuleEngine.default`) and UIKit (`RuleEngine.uikit` / `.full`) tables, covering all 22 supported patterns
+
+---
+
 ## [0.3.0] — 2026-05-21
 
 ### Added
@@ -99,7 +111,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.1...HEAD
+[0.3.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/GRimAce11/SwiftL10n/releases/tag/0.1.0
