@@ -84,7 +84,7 @@ Xcode shows two products. **Only add `SwiftL10nCore`:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.6.1"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.6.2"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -511,7 +511,7 @@ swiftl10n scan --format json > scan-results.json
 ```json
 {
   "schema_version": "1",
-  "swiftl10n_version": "0.6.1",
+  "swiftl10n_version": "0.6.2",
   "scanned": {
     "files": 5,
     "strings": 42,
@@ -880,7 +880,7 @@ SwiftL10n/
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 282 tests across 18 files
+    └── SwiftL10nCoreTests/            # 288 tests across 19 files
 ```
 
 ### Detection pipeline
@@ -920,7 +920,7 @@ The same principle applies to localization: SwiftL10n knows which string keys yo
 
 ## Current Status
 
-**v0.6.1 — Production stable.**
+**v0.6.2 — Production stable.**
 
 Two infrastructure domains are active:
 
@@ -930,6 +930,7 @@ Two infrastructure domains are active:
 | Asset infrastructure | Production stable | `Assets.swift` + missing-asset diagnostics |
 
 **Reliable today:**
+- `SwiftL10n.scan(projectPath:)` — single call generates both files and validates assets
 - String detection (SwiftUI + UIKit, 15 rules)
 - False-positive filtering with documented exclusion reasons
 - Confidence scoring (deterministic, 0.0–1.0)
@@ -938,10 +939,11 @@ Two infrastructure domains are active:
 - Asset catalog parsing (all `.xcassets` structures, namespace groups, `provides-namespace`)
 - Missing asset diagnostics (`Image("name")` where `name` is absent from the catalog)
 - `Assets.swift` generation — namespace-aware, deterministic, collision-safe, iOS 13+
+- iOS / tvOS / watchOS / visionOS compatible (all Apple platforms)
 - `.swiftl10n.yml` project config with auto-discovery
 - JSON diagnostics output (`--format json`)
 - Incremental scan cache (SHA-256 per-file, `.build/swiftl10n-cache.json`)
-- 282 tests, 0 failures
+- 288 tests, 0 failures
 
 ---
 
@@ -954,7 +956,8 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.1 – v0.4.x | Localization infrastructure foundation: SwiftUI + UIKit detection, confidence scoring, false-positive filtering, `i18n.swift` generation | Released |
 | v0.5.x | Developer workflow: `.swiftl10n.yml` config, `ScanPipeline`, JSON diagnostics, incremental SHA-256 cache | Released |
 | v0.6.0 | Asset infrastructure foundation: `.xcassets` catalog parsing, source-to-catalog cross-reference, missing asset diagnostics | Released |
-| v0.6.1 | Asset code generation: namespace-aware `Assets.swift` from catalog; `SwiftL10n.scan()` unified entry point generates both files in one call | Released |
+| v0.6.1 | Asset code generation: namespace-aware `Assets.swift` from catalog | Released |
+| v0.6.2 | `SwiftL10n.scan()` unified entry point; `generateAssets()` free function; iOS / tvOS / watchOS compatibility fix | Released |
 | v0.7 | Diagnostics ergonomics: `// swiftl10n:ignore` suppression, fix suggestions, confidence explanations in `--verbose`, GitHub Actions annotation format, `ImageResource` opt-in for iOS 16+ projects | Planned |
 | v0.8 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
 | v0.9 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
@@ -1052,7 +1055,7 @@ These constraints are not scheduled features. They are permanent decisions that 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.6.1"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.6.2"),
 ],
 targets: [
     .target(
@@ -1105,6 +1108,7 @@ swift test
 | `AssetCatalogTests.swift` | Parser, namespace groups, appiconset/symbolset skipped, `findCatalogs`, `merged` |
 | `AssetScannerTests.swift` | All five call-site forms, `Image(systemName:)` excluded, validation |
 | `AssetCodeGeneratorTests.swift` | Identifier/type-name conversion, namespaces, collisions, determinism, config |
+| `AssetsGeneratorTests.swift` | `generateAssets()` end-to-end: catalog discovery, output path, parent-dir lookup |
 
 ---
 
