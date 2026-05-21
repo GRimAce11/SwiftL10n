@@ -84,7 +84,9 @@ struct ContentView: View {
 // ── Paste this function anywhere in your project (same file or separate file) ──
 
 private func scanStrings() async {
-    #if DEBUG
+    #if DEBUG && !targetEnvironment(simulator) && !os(macOS)
+    print("SwiftL10n: skipped — run on Simulator or macOS to generate Strings.swift")
+    #elseif DEBUG
     let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"  // ← change only this
 
     do {
@@ -298,6 +300,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 // ── Paste this function anywhere in your project ───────────────────────────
 private func scanStrings() async {
+    #if DEBUG && !targetEnvironment(simulator) && !os(macOS)
+    print("SwiftL10n: skipped — run on Simulator or macOS to generate Strings.swift")
+    #elseif DEBUG
     let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
 
     do {
@@ -309,6 +314,7 @@ private func scanStrings() async {
     } catch {
         print("SwiftL10n error: \(error.localizedDescription)")
     }
+    #endif
 }
 // ───────────────────────────────────────────────────────────────────────────
 ```
