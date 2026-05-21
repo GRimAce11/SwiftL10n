@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/GRimAce11/SwiftL10n/actions/workflows/ci.yml/badge.svg)](https://github.com/GRimAce11/SwiftL10n/actions/workflows/ci.yml)
 [![Swift 6](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/Platforms-macOS%2014%2B-lightgray.svg)](https://developer.apple.com/macos/)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%2013%2B%20%7C%20macOS%2013%2B-lightgray.svg)](https://developer.apple.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SPM compatible](https://img.shields.io/badge/SwiftPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 
@@ -29,6 +29,201 @@ Feed it a directory; get back a typed list of detected strings with confidence s
 - **Code generation** — emits a type-safe `enum Strings { enum Settings { … } }` scaffold
 - **Extensible** — add custom detection rules by conforming to `DetectionRule`
 - **Swift 6 ready** — strict concurrency enforced, fully `Sendable`, zero data races
+
+---
+
+## Quick Start
+
+> Add the package, paste the snippet, run it — that's all you need to get your first results.
+
+### 1. Add the dependency
+
+**Xcode:** File → Add Package Dependencies → paste the URL → add `SwiftL10nCore` to your target.
+
+```
+https://github.com/GRimAce11/SwiftL10n.git
+```
+
+**Package.swift:**
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.1.0"),
+],
+targets: [
+    .target(name: "YourApp", dependencies: [
+        .product(name: "SwiftL10nCore", package: "SwiftL10n"),
+    ]),
+]
+```
+
+---
+
+### 2. Scan a single view — copy, paste, run
+
+```swift
+import SwiftL10nCore
+
+let source = """
+import SwiftUI
+
+struct SettingsView: View {
+    @State private var notificationsOn = true
+    @State private var showAlert = false
+    @State private var email = ""
+
+    var body: some View {
+        Form {
+            TextField("Email address", text: $email)
+            Toggle("Push Notifications", isOn: $notificationsOn)
+            Button("Delete Account") { showAlert = true }
+        }
+        .navigationTitle("Settings")
+        .alert("Are you sure?", isPresented: $showAlert) {
+            Button("Delete", role: .destructive) {}
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+"""
+
+let result = StringScanner().scan(source: source, filePath: "SettingsView.swift")
+
+for s in result.detectedStrings {
+    let pct = String(format: "%.0f%%", s.confidence * 100)
+    print("[\(s.context.displayName)] \"\(s.value)\"  \(pct)  line \(s.location.line)")
+}
+```
+
+**Output:**
+
+```
+[TextField] "Email address"  94%  line 8
+[Toggle] "Push Notifications"  95%  line 9
+[Button] "Delete Account"  97%  line 10
+[navigationTitle] "Settings"  99%  line 13
+[alert] "Are you sure?"  96%  line 14
+[Button] "Delete"  88%  line 15
+[Button] "Cancel"  88%  line 16
+```
+
+---
+
+### 3. Scan your whole project — copy, paste, run
+
+```swift
+import SwiftL10nCore
+import Foundation
+
+let sourcesPath = "/absolute/path/to/YourApp/Sources"  // ← change this
+
+let enumerator = FileManager.default.enumerator(
+    at: URL(fileURLWithPath: sourcesPath),
+    includingPropertiesForKeys: nil,
+    options: [.skipsHiddenFiles]
+)!
+
+let scanner = StringScanner(minimumConfidence: 0.85)
+var fileResults: [(String, [DetectedString])] = []
+
+for case let url as URL in enumerator where url.pathExtension == "swift" {
+    let source = try! String(contentsOf: url)
+    let result = scanner.scan(source: source, filePath: url.lastPathComponent)
+    if !result.detectedStrings.isEmpty {
+        fileResults.append((url.lastPathComponent, result.detectedStrings))
+    }
+}
+
+let total = fileResults.flatMap(\.1).count
+print("Found \(total) strings across \(fileResults.count) files\n")
+
+for (file, strings) in fileResults {
+    print("── \(file)")
+    for s in strings {
+        print("   \"\(s.value)\"  [\(s.context.displayName)]")
+    }
+}
+```
+
+---
+
+### 4. Generate Strings.swift — copy, paste, run
+
+```swift
+import SwiftL10nCore
+import Foundation
+
+let sourcesPath = "/absolute/path/to/YourApp/Sources"   // ← change this
+let outputPath  = "/absolute/path/to/YourApp/Sources/Generated/Strings.swift"  // ← change this
+
+let enumerator = FileManager.default.enumerator(
+    at: URL(fileURLWithPath: sourcesPath),
+    includingPropertiesForKeys: nil,
+    options: [.skipsHiddenFiles]
+)!
+
+let scanner = StringScanner(minimumConfidence: 0.85)
+var fileResults: [(String, [DetectedString])] = []
+
+for case let url as URL in enumerator where url.pathExtension == "swift" {
+    let source = try! String(contentsOf: url)
+    let result = scanner.scan(source: source, filePath: url.lastPathComponent)
+    if !result.detectedStrings.isEmpty {
+        fileResults.append((url.lastPathComponent, result.detectedStrings))
+    }
+}
+
+let namespaces = NamespaceInferrer().infer(from: fileResults)
+let code = CodeGenerator().generate(namespaces: namespaces)
+
+try! FileManager.default.createDirectory(
+    atPath: (outputPath as NSString).deletingLastPathComponent,
+    withIntermediateDirectories: true
+)
+try! code.write(toFile: outputPath, atomically: true, encoding: .utf8)
+print("✓ Generated Strings.swift — \(namespaces.count) namespace(s), \(fileResults.flatMap(\.1).count) strings")
+```
+
+Add the generated `Strings.swift` to your Xcode target. It looks like this:
+
+```swift
+enum Strings {
+    enum Settings {
+        static let settingsNavigationTitle = NSLocalizedString("Settings", comment: "Settings.settingsNavigationTitle")
+        static let deleteAccountButtonTitle = NSLocalizedString("Delete Account", comment: "Settings.deleteAccountButtonTitle")
+        static let areYouSureAlertTitle = NSLocalizedString("Are you sure?", comment: "Settings.areYouSureAlertTitle")
+    }
+    enum Home {
+        static let welcomeBack = NSLocalizedString("Welcome Back", comment: "Home.welcomeBack")
+    }
+}
+```
+
+---
+
+### 5. Replace hardcoded strings
+
+```swift
+// Before
+Text("Welcome Back")
+Button("Delete Account") { ... }
+.navigationTitle("Settings")
+TextField("Email address", text: $email)
+Toggle("Push Notifications", isOn: $on)
+.alert("Are you sure?", isPresented: $show) { ... }
+
+// After
+Text(Strings.Home.welcomeBack)
+Button(Strings.Settings.deleteAccountButtonTitle) { ... }
+.navigationTitle(Strings.Settings.settingsNavigationTitle)
+TextField(Strings.Settings.emailAddressPlaceholder, text: $email)
+Toggle(Strings.Settings.pushNotificationsToggleLabel, isOn: $on)
+.alert(Strings.Settings.areYouSureAlertTitle, isPresented: $show) { ... }
+```
+
+**That's it.** Add a `Localizable.strings` file for each language you support and `NSLocalizedString` handles the rest automatically.
+
+> For CI integration, Xcode Build Phase automation, interpolated strings, and custom rules see the [Production Guide](Documentation/ProductionGuide.md).
 
 ---
 
