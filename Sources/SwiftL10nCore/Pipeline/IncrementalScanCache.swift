@@ -14,16 +14,25 @@ public struct ScanCacheEntry: Sendable, Codable {
     /// Diagnostics emitted during the scan that produced this entry.
     public let diagnostics: [Diagnostic]
 
+    /// Existing localization call sites found during the pre-pass for this file.
+    public let existingLocalizationDetections: [ExistingLocalizationDetector.Detection]
+    /// Source locations of suppressed string literals (arguments to excluded functions).
+    public let suppressionLocations: [SourceLocation]
+
     public init(
         contentHash: String,
         swiftl10nVersion: String,
         detectedStrings: [DetectedString],
-        diagnostics: [Diagnostic]
+        diagnostics: [Diagnostic],
+        existingLocalizationDetections: [ExistingLocalizationDetector.Detection] = [],
+        suppressionLocations: [SourceLocation] = []
     ) {
-        self.contentHash = contentHash
-        self.swiftl10nVersion = swiftl10nVersion
-        self.detectedStrings = detectedStrings
-        self.diagnostics = diagnostics
+        self.contentHash                    = contentHash
+        self.swiftl10nVersion               = swiftl10nVersion
+        self.detectedStrings                = detectedStrings
+        self.diagnostics                    = diagnostics
+        self.existingLocalizationDetections = existingLocalizationDetections
+        self.suppressionLocations           = suppressionLocations
     }
 }
 

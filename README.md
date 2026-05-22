@@ -56,6 +56,9 @@ Seven principles govern every design decision:
 - **Project config file** — `.swiftl10n.yml` at the project root; run `swiftl10n init` to create one
 - **Incremental scanning** — SHA-256 per-file hashing skips unchanged files on subsequent runs (`incremental: true` in config)
 - **JSON output** — `--format json` produces a structured, versioned schema for CI artefacts and downstream tooling
+- **Incremental adoption** — `ExistingLocalizationDetector` recognizes existing localization patterns (`L10n.`, `i18n.`, `Strings.`, `NSLocalizedString`) and skips them in `incremental` mode; production codebases with partial localization work on day one
+- **Migration modes** — `audit` (all strings), `incremental` (gaps only), `strict` (CI enforcement)
+- **Additive merge strategy** — `merge_strategy: region` preserves manual extensions below the generated block on every regeneration
 - **Extensible** — add custom detection rules by conforming to `DetectionRule`
 - **Swift 6 ready** — strict concurrency enforced, fully `Sendable`, zero data races
 
@@ -84,7 +87,7 @@ Xcode shows two products. **Only add `SwiftL10nCore`:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.6.2"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.7.0"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -566,6 +569,7 @@ output:
   path: Sources/Generated/i18n.swift
   enum_name: i18n          # root enum name in the generated file
   table_name: Localizable  # .strings table passed to String(localized:)
+  merge_strategy: overwrite  # overwrite (default) | region (preserve manual code outside markers)
 
 # Strings below this score are ignored (0.0–1.0).
 minimum_confidence: 0.85
@@ -587,6 +591,23 @@ assets:
   enabled: false
   path: Sources/Generated/Assets.swift
   enum_name: Assets     # root enum name in the generated file
+
+# Incremental adoption: tell SwiftL10n about your existing localization system.
+# Patterns are prefix-and-boundary matched: "L10n." matches "L10n.save" but not "L10nHelper.save".
+existing_localization:
+  patterns:
+    - "L10n."     # SwiftGen output
+    - "Strings."  # custom enum
+  exclude_arguments_of:
+    - "NSLocalizedString"   # skip string literals inside these functions
+    - "String(localized:)"
+
+# Migration mode controls reporting and CI exit behaviour.
+#   audit:       (default) report all hardcoded strings — current behavior, zero breaking change
+#   incremental: skip already-localized call sites; report only gaps
+#   strict:      exit non-zero if any hardcoded string is found (CI enforcement)
+migration:
+  mode: audit
 ```
 
 **CLI flags always override config values.** For example, `swiftl10n scan --min-confidence 0.95` ignores `minimum_confidence` in the config for that run.
@@ -602,6 +623,125 @@ Found 42 string(s) across 8 namespace(s) in 23 file(s) (22 cached).
 ```
 
 The cache is stored at `.build/swiftl10n-cache.json` (already gitignored in SPM projects). It is invalidated automatically when a file changes or when the library version bumps.
+
+---
+
+## Incremental Adoption
+
+SwiftL10n is designed for real production codebases — not greenfield projects.
+
+Most apps contain a mix of hardcoded strings, partially-adopted localization, legacy patterns, and custom wrappers built over years. SwiftL10n respects all of this. It reports gaps without disrupting what already works.
+
+### Existing Localization Systems
+
+SwiftL10n coexists with any localization system — SwiftGen, R.swift, NSLocalizedString wrappers, CMS-backed systems, or no system at all. Configure the namespaces you already use:
+
+```yaml
+existing_localization:
+  patterns:
+    - "L10n."     # SwiftGen output
+    - "i18n."     # SwiftL10n's own generated output
+    - "Strings."  # manual enum
+  exclude_arguments_of:
+    - "NSLocalizedString"
+    - "String(localized:)"
+```
+
+| Existing system | Pattern to configure |
+|---|---|
+| SwiftGen | `"L10n."` |
+| R.swift | `"R.string.localizable."` |
+| Custom enum | `"Strings."`, `"Copy."`, `"Text."` |
+| Foundation | add `NSLocalizedString` to `exclude_arguments_of` |
+| SwiftL10n own output | `"i18n."` (auto-recognized if configured) |
+
+You can run SwiftL10n alongside any other system indefinitely. There is no migration deadline. Adoption is as gradual as your team wants.
+
+### Migration Modes
+
+```yaml
+migration:
+  mode: incremental  # audit | incremental | strict
+```
+
+| Mode | Behavior | Exit code |
+|---|---|---|
+| `audit` (default) | Report all hardcoded strings — current behavior | `--fail-on` controlled |
+| `incremental` | Recognize existing patterns; report only uncovered gaps | `--fail-on` controlled |
+| `strict` | Report all gaps; exit non-zero if any hardcoded string found | Always 1 on any finding |
+
+Override per-run with `--migration-mode incremental`.
+
+### Generated File Merge Strategy
+
+When `merge_strategy: region` is set, SwiftL10n only replaces the content between its ownership markers on each run. Everything outside the markers — manual extensions, documentation, custom helpers — is preserved:
+
+```swift
+// MARK: - SwiftL10n Generated BEGIN
+public enum i18n {
+    // ... regenerated on every run
+}
+// MARK: - SwiftL10n Generated END
+
+// Manual extensions below — never touched by SwiftL10n
+extension i18n.Common {
+    static var legacyKey: String { "legacy value" }
+}
+```
+
+Default (`merge_strategy: overwrite`) replaces the entire file — current behavior, zero breaking change.
+
+### Recommended Migration Workflow
+
+**Phase 0 — Baseline (Day 1, zero risk)**
+```bash
+swiftl10n scan --format json > baseline.json
+cat baseline.json | jq '.summary.totalStrings'
+```
+Count the scope. Nothing is changed.
+
+**Phase 1 — Configure (Day 1–2)**
+```yaml
+# .swiftl10n.yml
+existing_localization:
+  patterns:
+    - "L10n."
+  exclude_arguments_of:
+    - "NSLocalizedString"
+migration:
+  mode: incremental
+```
+Re-scan. The reported count drops — now showing only genuine gaps.
+
+**Phase 2 — Generate Missing APIs (Week 1)**
+```bash
+swiftl10n scan  # generates i18n.swift for detected gaps
+```
+Review the generated file in a PR. Do not adopt it in source yet — PR is for team review of namespace structure.
+
+**Phase 3 — Adopt Screen by Screen (Weeks 2–N)**
+Each migration is a single, human-authored, human-reviewed PR:
+```swift
+// Before
+Text("Delete Account")
+
+// After — manual, developer-owned, reviewed in code review
+Text(i18n.Settings.deleteAccount())
+```
+
+**Phase 4 — Enforce in CI (Month 2+)**
+```yaml
+migration:
+  mode: strict
+```
+```bash
+# CI step — fails if new hardcoded strings are introduced
+swiftl10n scan
+```
+Prevents regressions. Existing coverage is already recognized and skipped.
+
+**Phase 5 — Decommission Old System (Optional, no deadline)**
+Remove the old pattern from `existing_localization.patterns`. New call sites using the old system are now reported as gaps. Migrate them at your own pace.
 
 ---
 
@@ -920,9 +1060,9 @@ The same principle applies to localization: SwiftL10n knows which string keys yo
 
 ## Current Status
 
-**v0.6.2 — Production stable.**
+**v0.7.0 — Production stable.**
 
-Two infrastructure domains are active:
+Two infrastructure domains are active, both now with incremental adoption support:
 
 | Domain | Status | Generated output |
 |---|---|---|
@@ -943,7 +1083,9 @@ Two infrastructure domains are active:
 - `.swiftl10n.yml` project config with auto-discovery
 - JSON diagnostics output (`--format json`)
 - Incremental scan cache (SHA-256 per-file, `.build/swiftl10n-cache.json`)
-- 288 tests, 0 failures
+- **Incremental adoption** — `ExistingLocalizationDetector` recognizes SwiftGen, NSLocalizedString, and custom patterns; `incremental`/`strict` migration modes
+- **Additive merge strategy** — `merge_strategy: region` preserves manual extensions across regenerations
+- 341 tests, 0 failures
 
 ---
 
@@ -958,9 +1100,10 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.6.0 | Asset infrastructure foundation: `.xcassets` catalog parsing, source-to-catalog cross-reference, missing asset diagnostics | Released |
 | v0.6.1 | Asset code generation: namespace-aware `Assets.swift` from catalog | Released |
 | v0.6.2 | `SwiftL10n.scan()` unified entry point; `generateAssets()` free function; iOS / tvOS / watchOS compatibility fix | Released |
-| v0.7 | Diagnostics ergonomics: `// swiftl10n:ignore` suppression, fix suggestions, confidence explanations in `--verbose`, GitHub Actions annotation format, `ImageResource` opt-in for iOS 16+ projects | Planned |
-| v0.8 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
-| v0.9 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
+| v0.7.0 | Incremental adoption infrastructure: `ExistingLocalizationDetector`, `SuppressionIndex`, migration modes (audit/incremental/strict), `merge_strategy: region`, `suggestion` diagnostic severity | Released |
+| v0.8 | Diagnostics ergonomics: `// swiftl10n:ignore` suppression, fix suggestions, confidence explanations in `--verbose`, GitHub Actions annotation format, `ImageResource` opt-in for iOS 16+ | Planned |
+| v0.9 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
+| v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
 | v1.0 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
 
 Each phase is additive. APIs released in earlier phases are not removed in later ones without a major version bump.
@@ -1055,7 +1198,7 @@ These constraints are not scheduled features. They are permanent decisions that 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.6.2"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.7.0"),
 ],
 targets: [
     .target(
@@ -1109,6 +1252,10 @@ swift test
 | `AssetScannerTests.swift` | All five call-site forms, `Image(systemName:)` excluded, validation |
 | `AssetCodeGeneratorTests.swift` | Identifier/type-name conversion, namespaces, collisions, determinism, config |
 | `AssetsGeneratorTests.swift` | `generateAssets()` end-to-end: catalog discovery, output path, parent-dir lookup |
+| `ExistingLocalizationDetectorTests.swift` | Dot-path reconstruction, boundary-safe pattern matching, call vs member access, suppression locations, real-world fixtures |
+| `SuppressionIndexTests.swift` | O(1) lookup, file/line/column precision, merging, integration with detector |
+| `MigrationModeTests.swift` | Config decoding, pipeline mode propagation, existing pattern recognition, backwards compatibility |
+| `MergeStrategyTests.swift` | Marker replacement, manual code preservation, round-trip stability, config decoding |
 
 ---
 

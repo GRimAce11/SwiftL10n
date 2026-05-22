@@ -37,6 +37,9 @@ struct ScanCommand: ParsableCommand {
     @Option(name: .long, help: "Exit non-zero if diagnostics at or above this level are found (errors, warnings, never).")
     var failOn: FailSeverity = .errors
 
+    @Option(name: .long, help: "Migration mode: audit (default), incremental, or strict. Overrides config.")
+    var migrationMode: MigrationModeArg?
+
     // MARK: - Run
 
     mutating func run() throws {
@@ -84,7 +87,8 @@ struct ScanCommand: ParsableCommand {
         let pipeline = ScanPipeline(config: effectiveConfig, baseURL: configBaseURL)
         let result = try pipeline.run(
             sources: sourcePaths,
-            minimumConfidence: minConfidence
+            minimumConfidence: minConfidence,
+            migrationMode: migrationMode?.coreMode
         )
 
         // ── 5. Output ─────────────────────────────────────────────────────────
@@ -106,7 +110,15 @@ struct ScanCommand: ParsableCommand {
 
             if !quiet {
                 let cacheNote = result.cacheHits > 0 ? " (\(result.cacheHits) cached)" : ""
-                print("Found \(result.totalStrings) string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s)\(cacheNote).")
+                let modeNote: String = switch result.migrationMode {
+                case .audit:       ""
+                case .incremental: " [incremental mode]"
+                case .strict:      " [strict mode]"
+                }
+                print("Found \(result.totalStrings) string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s)\(cacheNote)\(modeNote).")
+                if result.existingLocalizationCount > 0 {
+                    print("  \(result.existingLocalizationCount) existing localization call site(s) recognized and skipped.")
+                }
                 for ns in result.namespaces.sorted(by: { $0.name < $1.name }) {
                     print("  \(ns.name): \(ns.strings.count) string(s)")
                 }
@@ -126,9 +138,21 @@ struct ScanCommand: ParsableCommand {
                     withIntermediateDirectories: true
                 )
                 let existed = FileManager.default.fileExists(atPath: outputPath)
-                try code.write(to: outputURL, atomically: true, encoding: .utf8)
+                let contentToWrite: String
+                if effectiveConfig.output.mergeStrategy == .region {
+                    if existed, let existing = try? String(contentsOf: outputURL, encoding: .utf8) {
+                        contentToWrite = FileRegionMerger.merge(existing: existing, newContent: code)
+                            ?? FileRegionMerger.wrap(code)
+                    } else {
+                        contentToWrite = FileRegionMerger.wrap(code)
+                    }
+                } else {
+                    contentToWrite = code
+                }
+                try contentToWrite.write(to: outputURL, atomically: true, encoding: .utf8)
                 if !quiet {
-                    print("\(existed ? "Updated" : "Created") \(outputURL.lastPathComponent).")
+                    let strategyNote = effectiveConfig.output.mergeStrategy == .region ? " (region merge)" : ""
+                    print("\(existed ? "Updated" : "Created") \(outputURL.lastPathComponent)\(strategyNote).")
                 }
             }
 
@@ -165,12 +189,17 @@ struct ScanCommand: ParsableCommand {
         }
 
         // ── 7. Exit code ──────────────────────────────────────────────────────
-        let shouldFail: Bool = switch failOn {
+        let strictFail = result.migrationMode == .strict && result.totalStrings > 0
+        let failOnFail: Bool = switch failOn {
         case .errors:   result.errorCount > 0
         case .warnings: result.warningCount > 0 || result.errorCount > 0
         case .never:    false
         }
-        if shouldFail { throw ExitCode.failure }
+        if strictFail {
+            if !quiet { fputs("error: strict mode — \(result.totalStrings) hardcoded string(s) found\n", stderr) }
+            throw ExitCode.failure
+        }
+        if failOnFail { throw ExitCode.failure }
     }
 
     // MARK: - Helpers
@@ -189,4 +218,16 @@ enum OutputFormat: String, ExpressibleByArgument, Sendable {
 
 enum FailSeverity: String, ExpressibleByArgument, Sendable {
     case errors, warnings, never
+}
+
+enum MigrationModeArg: String, ExpressibleByArgument, Sendable {
+    case audit, incremental, strict
+
+    var coreMode: SwiftL10nConfig.MigrationConfig.Mode {
+        switch self {
+        case .audit:       .audit
+        case .incremental: .incremental
+        case .strict:      .strict
+        }
+    }
 }

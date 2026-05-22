@@ -27,20 +27,25 @@ public struct StringScanner: Sendable {
     }
 
     /// Read `filePath` from disk and scan it.
-    public func scan(filePath: String) throws -> ScanResult {
+    public func scan(filePath: String, suppressionIndex: SuppressionIndex = .empty) throws -> ScanResult {
         let source = try String(contentsOfFile: filePath, encoding: .utf8)
-        return scan(source: source, filePath: filePath)
+        return scan(source: source, filePath: filePath, suppressionIndex: suppressionIndex)
     }
 
     /// Scan `source` text directly.  `filePath` is embedded in location metadata only.
-    public func scan(source: String, filePath: String) -> ScanResult {
+    public func scan(
+        source: String,
+        filePath: String,
+        suppressionIndex: SuppressionIndex = .empty
+    ) -> ScanResult {
         let tree = Parser.parse(source: source)
         let visitor = StringScannerVisitor(
             filePath: filePath,
             tree: tree,
             ruleEngine: ruleEngine,
             filter: filter,
-            minimumConfidence: minimumConfidence
+            minimumConfidence: minimumConfidence,
+            suppressionIndex: suppressionIndex
         )
         visitor.walk(tree)
         return ScanResult(
@@ -70,6 +75,7 @@ final class StringScannerVisitor: SyntaxVisitor {
     private let ruleEngine: RuleEngine
     private let filter: FalsePositiveFilter
     private let minimumConfidence: Double
+    private let suppressionIndex: SuppressionIndex
     private let scorer = ConfidenceScorer()
     private let contextExtractor = ContextExtractor()
 
@@ -78,13 +84,15 @@ final class StringScannerVisitor: SyntaxVisitor {
         tree: SourceFileSyntax,
         ruleEngine: RuleEngine,
         filter: FalsePositiveFilter,
-        minimumConfidence: Double
+        minimumConfidence: Double,
+        suppressionIndex: SuppressionIndex = .empty
     ) {
-        self.filePath = filePath
-        self.converter = SourceLocationConverter(fileName: filePath, tree: tree)
-        self.ruleEngine = ruleEngine
-        self.filter = filter
+        self.filePath         = filePath
+        self.converter        = SourceLocationConverter(fileName: filePath, tree: tree)
+        self.ruleEngine       = ruleEngine
+        self.filter           = filter
         self.minimumConfidence = minimumConfidence
+        self.suppressionIndex = suppressionIndex
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -93,10 +101,21 @@ final class StringScannerVisitor: SyntaxVisitor {
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         for rule in ruleEngine.rules {
             guard let context = rule.match(in: node) else { continue }
-            guard let (value, hasInterp) = extractString(
+            guard let (value, hasInterp, litLoc) = extractString(
                 from: node.arguments,
                 selector: rule.stringArgumentSelector
             ) else { continue }
+
+            // Suppression: string literal is an argument to an excluded localization function
+            if let litLoc, suppressionIndex.isSuppressed(litLoc) {
+                emittedDiagnostics.append(Diagnostic(
+                    severity: .note,
+                    message: "Skipped \"\(truncated(value))\" — argument to excluded localization function",
+                    location: makeLocation(for: node)
+                ))
+                break
+            }
+
             record(rawValue: value, hasInterpolation: hasInterp,
                    context: context, baseConfidence: rule.baseConfidence, node: node)
             // No break — allows e.g. UIAlertController to match both
@@ -129,6 +148,15 @@ final class StringScannerVisitor: SyntaxVisitor {
         for rule in ruleEngine.assignmentRules {
             guard let context = rule.match(propertyName: name) else { continue }
             let (value, hasInterp) = segments(of: literal)
+            let litLoc = makeLocation(for: literal)
+            if suppressionIndex.isSuppressed(litLoc) {
+                emittedDiagnostics.append(Diagnostic(
+                    severity: .note,
+                    message: "Skipped \"\(truncated(value))\" — argument to excluded localization function",
+                    location: makeLocation(for: node)
+                ))
+                break
+            }
             record(rawValue: value, hasInterpolation: hasInterp,
                    context: context, baseConfidence: rule.baseConfidence, node: node)
             break
@@ -183,15 +211,17 @@ final class StringScannerVisitor: SyntaxVisitor {
 
     // MARK: - String Extraction
 
-    /// Returns `(template, hasInterpolation)` or `nil` if no string literal is present.
+    /// Returns `(template, hasInterpolation, literalLocation)` or `nil` if no string literal is present.
+    /// `literalLocation` is the source position of the string literal itself (used for suppression checks).
     private func extractString(
         from arguments: LabeledExprListSyntax,
         selector: ArgumentSelector
-    ) -> (value: String, hasInterpolation: Bool)? {
+    ) -> (value: String, hasInterpolation: Bool, literalLocation: SourceLocation?)? {
         guard let arg = arguments.argument(for: selector),
               let literal = arg.expression.as(StringLiteralExprSyntax.self)
         else { return nil }
-        return segments(of: literal)
+        let (value, hasInterp) = segments(of: literal)
+        return (value, hasInterp, makeLocation(for: literal))
     }
 
     /// Decodes a `StringLiteralExprSyntax` into a template string, replacing

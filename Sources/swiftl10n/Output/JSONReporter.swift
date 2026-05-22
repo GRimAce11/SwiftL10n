@@ -121,17 +121,19 @@ struct JSONReporter: Sendable {
 
     private func diagnosticCode(for diagnostic: Diagnostic) -> String {
         switch diagnostic.severity {
-        case .note:    return "SL000"
-        case .warning: return "SL001"
-        case .error:   return "SL002"
+        case .note:       return "SL000"
+        case .suggestion: return "SL000"
+        case .warning:    return "SL001"
+        case .error:      return "SL002"
         }
     }
 
     private func severityName(_ severity: Diagnostic.Severity) -> String {
         switch severity {
-        case .note:    return "note"
-        case .warning: return "warning"
-        case .error:   return "error"
+        case .note:       return "note"
+        case .suggestion: return "note"
+        case .warning:    return "warning"
+        case .error:      return "error"
         }
     }
 }

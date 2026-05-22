@@ -20,6 +20,76 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
     public let incremental: Bool
     /// Asset code-generation settings. Set `enabled: true` to generate `Assets.swift`.
     public let assets: AssetsOutputConfig
+    /// Existing localization system detection. Patterns recognized and excluded from gap reporting.
+    public let existingLocalization: ExistingLocalizationConfig
+    /// Incremental adoption migration mode. Default: `audit` (current behavior unchanged).
+    public let migration: MigrationConfig
+
+    // MARK: - Nested: ExistingLocalizationConfig
+
+    /// Detection config for existing localization systems (SwiftGen, NSLocalizedString, custom wrappers).
+    public struct ExistingLocalizationConfig: Sendable, Codable, Equatable {
+        /// Namespace root patterns to recognize as already-localized call sites.
+        /// Trailing dot optional: `"L10n."` and `"L10n"` are treated identically.
+        public let patterns: [String]
+        /// Function names whose string literal arguments are excluded from gap reporting.
+        public let excludeArgumentsOf: [String]
+
+        public init(patterns: [String] = [], excludeArgumentsOf: [String] = []) {
+            self.patterns           = patterns
+            self.excludeArgumentsOf = excludeArgumentsOf
+        }
+
+        public static let `default` = ExistingLocalizationConfig()
+
+        /// `true` when at least one pattern or exclusion is configured.
+        public var isActive: Bool { !patterns.isEmpty || !excludeArgumentsOf.isEmpty }
+
+        /// Converts to the detector's own `Config` type.
+        public var detectorConfig: ExistingLocalizationDetector.Config {
+            .init(patterns: patterns, excludeArgumentsOf: excludeArgumentsOf)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case patterns
+            case excludeArgumentsOf = "exclude_arguments_of"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            patterns           = try c.decodeIfPresent([String].self, forKey: .patterns)           ?? []
+            excludeArgumentsOf = try c.decodeIfPresent([String].self, forKey: .excludeArgumentsOf) ?? []
+        }
+    }
+
+    // MARK: - Nested: MigrationConfig
+
+    /// Controls how SwiftL10n behaves in the presence of existing localization systems.
+    public struct MigrationConfig: Sendable, Codable, Equatable {
+        public enum Mode: String, Sendable, Codable, Equatable {
+            /// (Default) Report all hardcoded strings. Zero behavior change from v0.6.x.
+            case audit
+            /// Skip already-localized call sites; report only gaps.
+            case incremental
+            /// Exit non-zero if any hardcoded string is found (CI enforcement).
+            case strict
+        }
+
+        public let mode: Mode
+
+        public init(mode: Mode = .audit) {
+            self.mode = mode
+        }
+
+        public static let `default` = MigrationConfig()
+
+        enum CodingKeys: String, CodingKey { case mode }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            mode = try c.decodeIfPresent(Mode.self, forKey: .mode) ?? .audit
+        }
+    }
 
     // MARK: - Nested: AssetsOutputConfig
 
@@ -64,28 +134,41 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         public let enumName: String
         /// `.strings` table name passed to `String(localized:table:)`. Default: `Localizable`.
         public let tableName: String
+        /// File write strategy. `overwrite` (default) replaces the whole file each run.
+        /// `region` replaces only the generated block between ownership markers, preserving
+        /// manual extensions above and below.
+        public let mergeStrategy: MergeStrategy
+
+        public enum MergeStrategy: String, Sendable, Codable, Equatable {
+            case overwrite  // default: full-file replacement (current behavior)
+            case region     // marker-bounded replacement only
+        }
 
         public init(
             path: String = "Sources/Generated/i18n.swift",
             enumName: String = "i18n",
-            tableName: String = "Localizable"
+            tableName: String = "Localizable",
+            mergeStrategy: MergeStrategy = .overwrite
         ) {
-            self.path = path
-            self.enumName = enumName
-            self.tableName = tableName
+            self.path          = path
+            self.enumName      = enumName
+            self.tableName     = tableName
+            self.mergeStrategy = mergeStrategy
         }
 
         enum CodingKeys: String, CodingKey {
             case path
-            case enumName = "enum_name"
-            case tableName = "table_name"
+            case enumName      = "enum_name"
+            case tableName     = "table_name"
+            case mergeStrategy = "merge_strategy"
         }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            path      = try c.decodeIfPresent(String.self, forKey: .path)      ?? "Sources/Generated/i18n.swift"
-            enumName  = try c.decodeIfPresent(String.self, forKey: .enumName)  ?? "i18n"
-            tableName = try c.decodeIfPresent(String.self, forKey: .tableName) ?? "Localizable"
+            path          = try c.decodeIfPresent(String.self,          forKey: .path)          ?? "Sources/Generated/i18n.swift"
+            enumName      = try c.decodeIfPresent(String.self,          forKey: .enumName)      ?? "i18n"
+            tableName     = try c.decodeIfPresent(String.self,          forKey: .tableName)     ?? "Localizable"
+            mergeStrategy = try c.decodeIfPresent(MergeStrategy.self,   forKey: .mergeStrategy) ?? .overwrite
         }
     }
 
@@ -97,7 +180,9 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         minimumConfidence: 0.85,
         exclude: [],
         incremental: false,
-        assets: .init()
+        assets: .init(),
+        existingLocalization: .default,
+        migration: .default
     )
 
     // MARK: - Init
@@ -108,14 +193,18 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         minimumConfidence: Double = 0.85,
         exclude: [String] = [],
         incremental: Bool = false,
-        assets: AssetsOutputConfig = .init()
+        assets: AssetsOutputConfig = .init(),
+        existingLocalization: ExistingLocalizationConfig = .default,
+        migration: MigrationConfig = .default
     ) {
-        self.sources = sources
-        self.output = output
-        self.minimumConfidence = minimumConfidence
-        self.exclude = exclude
-        self.incremental = incremental
-        self.assets = assets
+        self.sources              = sources
+        self.output               = output
+        self.minimumConfidence    = minimumConfidence
+        self.exclude              = exclude
+        self.incremental          = incremental
+        self.assets               = assets
+        self.existingLocalization = existingLocalization
+        self.migration            = migration
     }
 
     // MARK: - CodingKeys (snake_case YAML ↔ camelCase Swift)
@@ -123,20 +212,24 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case sources
         case output
-        case minimumConfidence = "minimum_confidence"
+        case minimumConfidence    = "minimum_confidence"
         case exclude
         case incremental
         case assets
+        case existingLocalization = "existing_localization"
+        case migration
     }
 
     // Provide defaults for every field so a minimal YAML (e.g. `sources: [Sources]`) is valid.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        sources           = try c.decodeIfPresent([String].self, forKey: .sources)                ?? ["Sources"]
-        output            = try c.decodeIfPresent(OutputConfig.self, forKey: .output)             ?? .init()
-        minimumConfidence = try c.decodeIfPresent(Double.self, forKey: .minimumConfidence)        ?? 0.85
-        exclude           = try c.decodeIfPresent([String].self, forKey: .exclude)                ?? []
-        incremental       = try c.decodeIfPresent(Bool.self, forKey: .incremental)                ?? false
-        assets            = try c.decodeIfPresent(AssetsOutputConfig.self, forKey: .assets)       ?? .init()
+        sources              = try c.decodeIfPresent([String].self,               forKey: .sources)              ?? ["Sources"]
+        output               = try c.decodeIfPresent(OutputConfig.self,           forKey: .output)               ?? .init()
+        minimumConfidence    = try c.decodeIfPresent(Double.self,                 forKey: .minimumConfidence)    ?? 0.85
+        exclude              = try c.decodeIfPresent([String].self,               forKey: .exclude)              ?? []
+        incremental          = try c.decodeIfPresent(Bool.self,                   forKey: .incremental)          ?? false
+        assets               = try c.decodeIfPresent(AssetsOutputConfig.self,     forKey: .assets)               ?? .init()
+        existingLocalization = try c.decodeIfPresent(ExistingLocalizationConfig.self, forKey: .existingLocalization) ?? .default
+        migration            = try c.decodeIfPresent(MigrationConfig.self,        forKey: .migration)            ?? .default
     }
 }
