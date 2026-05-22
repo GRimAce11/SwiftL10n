@@ -57,7 +57,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `ConfidenceScorer` internals refactored to use `Accumulator` struct; all deltas now carry named reasons. The public `score()` API is unchanged (still returns `Double`); `explain()` is the new first-class method.
 - `JSONReporter.StringEntry` gains `suggested_property_name: String` and `score_explanation: ScoreExplanation?` fields. The `swiftl10n_version` field now tracks `SwiftL10nCoreVersion.current` dynamically instead of a hardcoded string.
 - `--verbose` console format: confidence shown as `95%` (not `0.95`) and now includes score breakdown and fix suggestion lines.
+- `AssetsOutputConfig` gains `use_image_resource: Bool` (default: `false`). `AssetCodeGenerator.Configuration` gains matching field. Existing asset configs are unaffected.
 - Version bumped to `0.8.0`; all 0.7.x incremental cache entries auto-invalidated.
+
+### Fixed
+
+- **README roadmap** — duplicate `v1.0` row corrected to `v1.1` (resource consistency stays `v1.0`; API stability contract moved to `v1.1`).
+- **`JSONReporter` version** — `swiftl10n_version` was hardcoded as `"0.5.2"` since initial implementation. Now reads `SwiftL10nCoreVersion.current` at runtime, so JSON output always reflects the running library version.
+- **`JSONReporter` missing migration fields** — `scanned` object now includes `existing_localized` and `migration_mode`, which were present in `PipelineResult` but not serialized.
+- **`ConfigTests` incomplete coverage** — `testDefaultConfigValues()` now asserts all v0.7.0 defaults (`mergeStrategy`, `migration.mode`, `existingLocalization`); `testRoundTripEquality()` exercises all new config fields.
+- **`InitCommand` YAML template** — generated `.swiftl10n.yml` now includes commented `existing_localization`, `migration`, and `merge_strategy` sections so developers see the full config surface without consulting the README.
+- **`_ = try? await SwiftL10n.scan(…)`** — all README and doc-comment examples updated to suppress the "result of `try?` is unused" compiler warning. `@discardableResult` applies to the direct return value; `try?` produces `Optional<ScanResult>` which the compiler tracks separately.
 
 ---
 

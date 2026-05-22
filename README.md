@@ -493,21 +493,29 @@ swiftl10n scan Sources/
 | `--output <path>` | Write generated `i18n.swift` to this path (overrides config) |
 | `--assets-output <path>` | Generate `Assets.swift` from `.xcassets` catalogs found in the project root |
 | `--min-confidence <0–1>` | Ignore strings below this score (overrides config) |
-| `--verbose` | Print every detected string with location and context |
+| `--verbose` | Print every detected string with location, confidence breakdown, and fix suggestion |
 | `--quiet` | Suppress all output except errors |
 | `--config <path>` | Load config from a specific file instead of auto-discovering |
-| `--format json` | Output structured JSON to stdout instead of console text |
+| `--format json` | Output structured JSON to stdout |
+| `--format github` | Emit GitHub Actions `::warning::` annotations (see [GitHub Actions](#github-actions)) |
 | `--fail-on warnings` | Exit non-zero on any warning (default: errors only) |
 | `--fail-on never` | Always exit 0 (useful for advisory-only CI steps) |
+| `--migration-mode audit\|incremental\|strict` | Override migration mode for this run (overrides config) |
 
 **Examples:**
 
 ```bash
-# Scan and generate, verbose
+# Scan and generate, verbose (shows score breakdown + fix suggestions)
 swiftl10n scan --verbose --output Sources/Generated/i18n.swift
 
 # CI: fail the build if any warnings are found
 swiftl10n scan --fail-on warnings
+
+# CI: strict mode — fail if any hardcoded string exists
+swiftl10n scan --migration-mode strict
+
+# GitHub Actions annotations
+swiftl10n scan --format github
 
 # Structured JSON output — pipe to jq or save as artefact
 swiftl10n scan --format json | jq '.scanned'
@@ -519,14 +527,16 @@ swiftl10n scan --format json > scan-results.json
 ```json
 {
   "schema_version": "1",
-  "swiftl10n_version": "0.6.2",
+  "swiftl10n_version": "0.8.0",
   "scanned": {
     "files": 5,
     "strings": 42,
     "namespaces": 3,
     "warnings": 1,
     "errors": 0,
-    "cache_hits": 4
+    "cache_hits": 4,
+    "existing_localized": 18,
+    "migration_mode": "incremental"
   },
   "diagnostics": [
     {
@@ -547,8 +557,18 @@ swiftl10n scan --format json > scan-results.json
           "context": "Button",
           "confidence": 0.97,
           "has_interpolation": false,
+          "suggested_property_name": "deleteAccountButtonTitle",
           "file": "SettingsView.swift",
-          "line": 22
+          "line": 22,
+          "score_explanation": {
+            "base": 0.95,
+            "factors": [
+              { "reason": "multi-word phrase", "delta": 0.02 },
+              { "reason": "starts uppercase", "delta": 0.01 },
+              { "reason": "title case", "delta": 0.01 }
+            ],
+            "final": 0.97
+          }
         }
       ]
     }
@@ -595,7 +615,8 @@ incremental: true
 assets:
   enabled: false
   path: Sources/Generated/Assets.swift
-  enum_name: Assets     # root enum name in the generated file
+  enum_name: Assets         # root enum name in the generated file
+  # use_image_resource: false  # true → @available(iOS 16, …) ImageResource accessors
 
 # Incremental adoption: tell SwiftL10n about your existing localization system.
 # Patterns are prefix-and-boundary matched: "L10n." matches "L10n.save" but not "L10nHelper.save".
@@ -628,6 +649,102 @@ Found 42 string(s) across 8 namespace(s) in 23 file(s) (22 cached).
 ```
 
 The cache is stored at `.build/swiftl10n-cache.json` (already gitignored in SPM projects). It is invalidated automatically when a file changes or when the library version bumps.
+
+---
+
+### Inline suppression
+
+Add `// swiftl10n:ignore` anywhere on a line to silence that line's detection. No configuration needed — it is honoured automatically by every scan.
+
+```swift
+let debugLabel = Text("internal_debug_key")  // swiftl10n:ignore
+label.text     = "staging_only_banner"       // swiftl10n:ignore — not a UI string
+```
+
+A `.note` diagnostic is emitted to confirm the suppression fired:
+```
+Demo.swift:4:22: note: Suppressed "internal_debug_key" — swiftl10n:ignore
+```
+
+Arbitrary text after the marker is allowed (`// swiftl10n:ignore reason here`). Only same-line suppression is supported — the comment must be on the same line as the string literal.
+
+---
+
+### GitHub Actions
+
+`--format github` emits native GitHub Actions annotation syntax, which GitHub renders inline in the diff view of every PR.
+
+```yaml
+# .github/workflows/lint.yml
+- name: SwiftL10n scan
+  run: swiftl10n scan --format github
+```
+
+Output per warning:
+```
+::warning file=Sources/Views/SettingsView.swift,line=42,col=13,title=SwiftL10n::Interpolated string in localizable context — no API will be generated: "Hello {…}!"
+```
+
+Summary line:
+```
+::notice title=SwiftL10n::Found 3 hardcoded string(s) across 2 namespace(s) in 18 file(s)
+```
+
+Use with `--migration-mode strict` to fail the PR build when any new hardcoded string is introduced:
+
+```yaml
+- name: SwiftL10n strict check
+  run: swiftl10n scan --format github --migration-mode strict
+```
+
+---
+
+### Verbose output
+
+`--verbose` now shows the confidence score breakdown and the suggested generated property name for each detected string:
+
+```
+── SettingsView.swift (2 string(s))
+  [Button] "Delete Account"  95% — SettingsView.swift:42:13
+      score: +2% multi-word phrase, +1% title case, +1% starts uppercase
+      → i18n.<Namespace>.deleteAccountButtonTitle()
+  [Text] "Are you sure?"  98% — SettingsView.swift:51:17
+      score: +2% multi-word phrase, +2% inside SettingsView (View family), +1% body property
+      → i18n.<Namespace>.areYouSure()
+```
+
+The suggested property name is also included in `--format json` output under `suggested_property_name`.
+
+---
+
+### ImageResource opt-in
+
+`ImageResource` (iOS 16+, macOS 13+, tvOS 16+, watchOS 9+) provides a typed handle to an asset that can be passed directly to `Image(assetResource)` without a string literal at the call site.
+
+Set `use_image_resource: true` in the `assets:` config section to generate `ImageResource` accessors instead of `Image` functions:
+
+```yaml
+assets:
+  enabled: true
+  use_image_resource: true  # requires iOS 16+ deployment target
+```
+
+Generated output with `use_image_resource: true`:
+```swift
+@available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
+public static var profileIcon: ImageResource {
+    ImageResource(name: "profile_icon", bundle: .main)
+}
+```
+
+Generated output with `use_image_resource: false` (default):
+```swift
+public static func profileIcon() -> Image {
+    Image("profile_icon")
+}
+```
+
+Colors always use `Color("name")` regardless of this setting.
 
 ---
 
@@ -1025,7 +1142,7 @@ SwiftL10n/
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 288 tests across 19 files
+    └── SwiftL10nCoreTests/            # 371 tests across 24 files
 ```
 
 ### Detection pipeline
