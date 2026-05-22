@@ -10,6 +10,61 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.7.0] — 2026-05-22
+
+### Added
+
+- **`ExistingLocalizationDetector`** — structural pre-pass `SyntaxVisitor` that recognizes existing localization call sites before `StringScanner` runs. Detects member-access chains (`L10n.Settings.save`, `i18n.Common.cancel`) and function calls (`i18n.Settings.title()`) by reconstructing dot-paths from nested `MemberAccessExprSyntax` trees. Uses prefix-and-boundary pattern matching: `"L10n."` matches `L10n.save` but not `L10nHelper.save`. Configurable via `existing_localization.patterns` in `.swiftl10n.yml`. Coexists with SwiftGen, R.swift, NSLocalizedString wrappers, and any custom enum-based system.
+
+- **`SuppressionIndex`** — `O(1)` `Set<SourceLocation>` lookup table built from string literal positions found inside excluded functions (e.g., the `"Save"` in `NSLocalizedString("Save", comment: "")`). Passed into `StringScannerVisitor`; suppression is diagnostic-only — it never mutates AST traversal order or rule evaluation.
+
+- **`ExistingLocalizationDetector.Config`** — two fields: `patterns: [String]` (namespace roots to recognize) and `excludeArgumentsOf: [String]` (function names whose string literal arguments are added to the suppression index). Both default to empty; the pre-pass is zero-cost when unconfigured.
+
+- **`FileRegionMerger`** — marker-based additive merge strategy. `merge(existing:newContent:)` replaces only the content between `// MARK: - SwiftL10n Generated BEGIN` and `// MARK: - SwiftL10n Generated END` markers, preserving all manually-written code above and below. Returns `nil` when markers are absent (first write). `wrap(_:)` adds the markers on initial generation.
+
+- **Migration modes** — three modes controlled by `migration.mode` in config and `--migration-mode` CLI flag:
+  - `audit` (default) — current behavior; reports all hardcoded strings; zero breaking change for existing users.
+  - `incremental` — runs `ExistingLocalizationDetector`; reports only strings not already covered by configured patterns.
+  - `strict` — same as incremental, plus exits non-zero if any hardcoded string is found; CI enforcement.
+
+- **`merge_strategy` on `OutputConfig`** — `overwrite` (default, current behavior) replaces the entire generated file; `region` uses `FileRegionMerger` to preserve manual code on every regeneration.
+
+- **`Diagnostic.Severity.suggestion`** — new severity below `.warning`; never fails CI and is shown only in verbose mode. Reserved for future opt-in advisories (`potentialDuplicate`, `legacyLocalizationPattern`).
+
+- **`--migration-mode` CLI flag** on `swiftl10n scan` — overrides `migration.mode` from config for the current run. Accepts `audit`, `incremental`, `strict`.
+
+- **`PipelineResult.existingLocalizationCount`** — total recognized existing localization call sites across all scanned files; shown in console output when > 0.
+
+- **`PipelineResult.suppressedStringCount`** — string literals skipped because they appeared inside an excluded function call.
+
+- **`PipelineResult.migrationMode`** — the mode used for the run; echoed in JSON output and console.
+
+- **`ScanCacheEntry.existingLocalizationDetections`** and **`ScanCacheEntry.suppressionLocations`** — pre-pass results are now cached alongside string detections; cache miss cost is paid only once per file.
+
+- **53 new tests** across 4 new test files:
+  - `ExistingLocalizationDetectorTests` — dot-path reconstruction, boundary-safe pattern matching, call vs member-access kind, sub-expression deduplication, multi-pattern detection, suppression location recording, real-world SwiftGen coexistence fixture, location accuracy.
+  - `SuppressionIndexTests` — O(1) lookup, file/line/column precision, empty index, merging, integration with detector output.
+  - `MigrationModeTests` — YAML decoding of all modes and patterns, pipeline mode propagation, existing pattern recognition accumulation, suppression integration, backwards compatibility with minimal config.
+  - `MergeStrategyTests` — marker replacement, manual code preservation above/below region, whitespace handling, nil on missing markers, reversed markers, first-write wrap, round-trip stability across multiple regenerations.
+
+- **Demo app** updated: "Partial" fixture demonstrating a file with mixed hardcoded strings and `L10n.*` call sites; `ScanViewModel` now runs `ExistingLocalizationDetector` alongside `StringScanner` and exposes `recognizedCount`; results pane shows both gap count and recognized call-site count.
+
+### Changed
+
+- `SwiftL10nConfig` gains two new top-level sections: `existing_localization` (patterns, exclude_arguments_of) and `migration` (mode). Both use `decodeIfPresent` with empty/audit defaults — every existing `.swiftl10n.yml` loads without modification.
+- `OutputConfig` gains `merge_strategy` (default: `overwrite`) — existing generated files are overwritten as before unless `region` is explicitly set.
+- `StringScanner.scan(source:filePath:)` and `scan(filePath:)` gain an optional `suppressionIndex: SuppressionIndex` parameter (default: `.empty`). Call sites without suppression are unchanged.
+- `ScanCommand` console output reports recognized existing localization count when > 0.
+- `ScanCommand` exits non-zero in `strict` mode if `totalStrings > 0`, independent of `--fail-on`.
+- `JSONReporter` handles `Diagnostic.Severity.suggestion` (mapped to `SL000` / `"note"`).
+- Version bumped to `0.7.0`; all 0.6.x incremental cache entries are automatically invalidated.
+
+### Fixed
+
+- `_ = try? await SwiftL10n.scan(...)` — all README and doc-comment examples updated to use `_ =` to suppress the "result of `try?` is unused" compiler warning. `@discardableResult` applies to the direct return value; `try?` produces `Optional<ScanResult>` which is a distinct expression the compiler tracks separately.
+
+---
+
 ## [0.6.2] — 2026-05-21
 
 ### Fixed
@@ -246,7 +301,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.2...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.2...0.7.0
 [0.6.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.1...0.6.2
 [0.6.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.5.2...0.6.0

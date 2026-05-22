@@ -43,19 +43,23 @@ private struct SourcePane: View {
 
     private var toolbar: some View {
         HStack(spacing: 12) {
-            // Framework picker
+            // Fixture picker
             Picker("", selection: Binding(
-                get: { viewModel.sourceCode == ScanViewModel.uiKitSource ? 1 : 0 },
+                get: { viewModel.selectedFixture.rawValue },
                 set: { idx in
-                    viewModel.sourceCode = idx == 0 ? ScanViewModel.swiftUISource : ScanViewModel.uiKitSource
-                    Task { await viewModel.scan() }
+                    if let fixture = DemoFixture(rawValue: idx) {
+                        viewModel.selectedFixture = fixture
+                        viewModel.sourceCode = fixture.source
+                        Task { await viewModel.scan() }
+                    }
                 }
             )) {
-                Text("SwiftUI").tag(0)
-                Text("UIKit").tag(1)
+                ForEach(DemoFixture.allCases, id: \.rawValue) { fixture in
+                    Text(fixture.label).tag(fixture.rawValue)
+                }
             }
             .pickerStyle(.segmented)
-            .frame(width: 140)
+            .frame(width: 190)
 
             Spacer()
             HStack(spacing: 4) {
@@ -95,6 +99,10 @@ private struct SourcePane: View {
                 Label("\(viewModel.interpolatedCount) interpolated", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             }
+            if viewModel.recognizedCount > 0 {
+                Label("\(viewModel.recognizedCount) recognized", systemImage: "checkmark.seal")
+                    .foregroundStyle(.teal)
+            }
             Spacer()
             if viewModel.isScanning {
                 ProgressView().scaleEffect(0.6)
@@ -117,7 +125,7 @@ private struct ResultsPane: View {
             if viewModel.isScanning {
                 ProgressView("Scanning…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.results.isEmpty && !viewModel.sourceCode.isEmpty {
+            } else if viewModel.results.isEmpty && viewModel.existingDetections.isEmpty && !viewModel.sourceCode.isEmpty {
                 ContentUnavailableView(
                     "No localizable strings detected",
                     systemImage: "text.magnifyingglass",
@@ -127,17 +135,113 @@ private struct ResultsPane: View {
                 resultsList
             }
         }
-        .navigationTitle(viewModel.results.isEmpty ? "Results" : "\(viewModel.results.count) detected")
-        .navigationSubtitle(viewModel.warningCount > 0 ? "\(viewModel.warningCount) warning(s)" : "")
+        .navigationTitle(navigationTitle)
+        .navigationSubtitle(navigationSubtitle)
+    }
+
+    private var navigationTitle: String {
+        if viewModel.results.isEmpty && viewModel.recognizedCount == 0 { return "Results" }
+        var parts: [String] = []
+        if viewModel.results.count > 0 { parts.append("\(viewModel.results.count) gaps") }
+        if viewModel.recognizedCount > 0 { parts.append("\(viewModel.recognizedCount) recognized") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var navigationSubtitle: String {
+        if viewModel.warningCount > 0 { return "\(viewModel.warningCount) warning(s)" }
+        if viewModel.recognizedCount > 0 { return "L10n. · i18n. patterns recognized" }
+        return ""
     }
 
     private var resultsList: some View {
-        List(viewModel.results, id: \.self, selection: $viewModel.selectedString) { string in
-            StringRowView(string: string)
-                .tag(string)
+        List {
+            // Gaps — strings that need localization
+            if !viewModel.results.isEmpty {
+                Section {
+                    ForEach(viewModel.results, id: \.self) { string in
+                        StringRowView(string: string)
+                    }
+                } header: {
+                    Label("Needs localization", systemImage: "exclamationmark.bubble")
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            // Recognized — existing localization call sites
+            if !viewModel.existingDetections.isEmpty {
+                Section {
+                    ForEach(viewModel.existingDetections.indices, id: \.self) { idx in
+                        RecognizedRowView(detection: viewModel.existingDetections[idx])
+                    }
+                } header: {
+                    Label("Recognized (existing localization)", systemImage: "checkmark.seal")
+                        .foregroundStyle(.teal)
+                }
+            }
         }
         .listStyle(.inset)
         .alternatingRowBackgrounds()
+    }
+}
+
+// MARK: - Recognized row
+
+private struct RecognizedRowView: View {
+    let detection: ExistingLocalizationDetector.Detection
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 2) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.teal)
+                    .frame(width: 4, height: 36)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(detection.fullExpression)
+                        .font(.body)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    KindBadge(kind: detection.kind)
+                }
+                HStack(spacing: 6) {
+                    PatternBadge(pattern: detection.matchedPattern)
+                    Spacer()
+                    Text("line \(detection.location.line)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct KindBadge: View {
+    let kind: ExistingLocalizationDetector.Detection.Kind
+
+    var body: some View {
+        Text(kind == .callExpression ? "call" : "property")
+            .font(.caption2.bold())
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.teal.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+            .foregroundStyle(Color.teal)
+    }
+}
+
+private struct PatternBadge: View {
+    let pattern: String
+
+    var body: some View {
+        Text("\(pattern).")
+            .font(.caption2.bold())
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+            .foregroundStyle(Color.teal.opacity(0.8))
     }
 }
 
