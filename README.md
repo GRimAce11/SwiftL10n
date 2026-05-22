@@ -1104,7 +1104,7 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.8 | Diagnostics ergonomics: `// swiftl10n:ignore` suppression, fix suggestions, confidence explanations in `--verbose`, GitHub Actions annotation format, `ImageResource` opt-in for iOS 16+ | Planned |
 | v0.9 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
 | v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
-| v1.0 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
+| v1.1 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
 
 Each phase is additive. APIs released in earlier phases are not removed in later ones without a major version bump.
 

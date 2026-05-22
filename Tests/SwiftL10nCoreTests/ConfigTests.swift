@@ -12,9 +12,14 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.output.path, "Sources/Generated/i18n.swift")
         XCTAssertEqual(config.output.enumName, "i18n")
         XCTAssertEqual(config.output.tableName, "Localizable")
+        XCTAssertEqual(config.output.mergeStrategy, .overwrite)
         XCTAssertEqual(config.minimumConfidence, 0.85)
         XCTAssertEqual(config.exclude, [])
         XCTAssertFalse(config.incremental)
+        XCTAssertTrue(config.existingLocalization.patterns.isEmpty)
+        XCTAssertTrue(config.existingLocalization.excludeArgumentsOf.isEmpty)
+        XCTAssertFalse(config.existingLocalization.isActive)
+        XCTAssertEqual(config.migration.mode, .audit)
     }
 
     // MARK: - YAML decoding
@@ -84,10 +89,12 @@ final class ConfigTests: XCTestCase {
     func testRoundTripEquality() throws {
         let original = SwiftL10nConfig(
             sources: ["Sources/App"],
-            output: .init(path: "Out/i18n.swift", enumName: "L10n", tableName: "Localizable"),
+            output: .init(path: "Out/i18n.swift", enumName: "L10n", tableName: "Localizable", mergeStrategy: .region),
             minimumConfidence: 0.9,
             exclude: ["Sources/Gen"],
-            incremental: true
+            incremental: true,
+            existingLocalization: .init(patterns: ["L10n.", "i18n."], excludeArgumentsOf: ["NSLocalizedString"]),
+            migration: .init(mode: .incremental)
         )
         let encoded = try YAMLEncoder().encode(original)
         let decoded = try YAMLDecoder().decode(SwiftL10nConfig.self, from: encoded)

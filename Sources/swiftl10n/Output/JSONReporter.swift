@@ -23,10 +23,14 @@ struct JSONReporter: Sendable {
             let warnings: Int
             let errors: Int
             let cacheHits: Int
+            let existingLocalized: Int
+            let migrationMode: String
 
             enum CodingKeys: String, CodingKey {
                 case files, strings, namespaces, warnings, errors
-                case cacheHits = "cache_hits"
+                case cacheHits       = "cache_hits"
+                case existingLocalized = "existing_localized"
+                case migrationMode   = "migration_mode"
             }
         }
 
@@ -65,7 +69,7 @@ struct JSONReporter: Sendable {
 
     // MARK: - Version
 
-    static let version = "0.5.2"
+    static var version: String { SwiftL10nCoreVersion.current }
 
     // MARK: - Report
 
@@ -80,7 +84,9 @@ struct JSONReporter: Sendable {
                 namespaces: result.namespaces.count,
                 warnings: result.warningCount,
                 errors: result.errorCount,
-                cacheHits: result.cacheHits
+                cacheHits: result.cacheHits,
+                existingLocalized: result.existingLocalizationCount,
+                migrationMode: result.migrationMode.rawValue
             ),
             diagnostics: result.diagnostics
                 .filter { $0.severity != .note }
