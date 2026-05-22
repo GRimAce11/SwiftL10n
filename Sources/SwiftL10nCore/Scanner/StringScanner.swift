@@ -33,6 +33,9 @@ public struct StringScanner: Sendable {
     }
 
     /// Scan `source` text directly.  `filePath` is embedded in location metadata only.
+    ///
+    /// `// swiftl10n:ignore` comments in `source` are honoured automatically —
+    /// any string literal on the same line as the comment is suppressed.
     public func scan(
         source: String,
         filePath: String,
@@ -45,7 +48,8 @@ public struct StringScanner: Sendable {
             ruleEngine: ruleEngine,
             filter: filter,
             minimumConfidence: minimumConfidence,
-            suppressionIndex: suppressionIndex
+            suppressionIndex: suppressionIndex,
+            inlineSuppression: InlineSuppression(source: source)
         )
         visitor.walk(tree)
         return ScanResult(
@@ -76,6 +80,7 @@ final class StringScannerVisitor: SyntaxVisitor {
     private let filter: FalsePositiveFilter
     private let minimumConfidence: Double
     private let suppressionIndex: SuppressionIndex
+    private let inlineSuppression: InlineSuppression
     private let scorer = ConfidenceScorer()
     private let contextExtractor = ContextExtractor()
 
@@ -85,14 +90,16 @@ final class StringScannerVisitor: SyntaxVisitor {
         ruleEngine: RuleEngine,
         filter: FalsePositiveFilter,
         minimumConfidence: Double,
-        suppressionIndex: SuppressionIndex = .empty
+        suppressionIndex: SuppressionIndex = .empty,
+        inlineSuppression: InlineSuppression = .empty
     ) {
-        self.filePath         = filePath
-        self.converter        = SourceLocationConverter(fileName: filePath, tree: tree)
-        self.ruleEngine       = ruleEngine
-        self.filter           = filter
+        self.filePath          = filePath
+        self.converter         = SourceLocationConverter(fileName: filePath, tree: tree)
+        self.ruleEngine        = ruleEngine
+        self.filter            = filter
         self.minimumConfidence = minimumConfidence
-        self.suppressionIndex = suppressionIndex
+        self.suppressionIndex  = suppressionIndex
+        self.inlineSuppression = inlineSuppression
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -173,39 +180,52 @@ final class StringScannerVisitor: SyntaxVisitor {
         baseConfidence: Double,
         node: some SyntaxProtocol
     ) {
+        let location = makeLocation(for: node)
+
+        // Inline suppression: // swiftl10n:ignore on the same line
+        if inlineSuppression.isSuppressed(line: location.line) {
+            emittedDiagnostics.append(Diagnostic(
+                severity: .note,
+                message: "Suppressed \"\(truncated(rawValue))\" — swiftl10n:ignore",
+                location: location
+            ))
+            return
+        }
+
         let filterTarget = hasInterpolation ? staticContent(of: rawValue) : rawValue
         if let reason = filter.exclusionReason(for: filterTarget) {
             emittedDiagnostics.append(Diagnostic(
                 severity: .note,
                 message: "Skipped \"\(truncated(rawValue))\" — \(reason.explanation)",
-                location: makeLocation(for: node)
+                location: location
             ))
             return
         }
 
         let enclosing = contextExtractor.extract(from: node)
-        let confidence = scorer.score(
+        let explanation = scorer.explain(
             value: filterTarget,
             baseConfidence: baseConfidence,
             enclosingContext: enclosing
         )
-        guard confidence >= minimumConfidence else { return }
+        guard explanation.final >= minimumConfidence else { return }
 
         if hasInterpolation {
             emittedDiagnostics.append(Diagnostic(
                 severity: .warning,
                 message: "Interpolated string in localizable context — no API will be generated: \"\(truncated(rawValue))\"",
-                location: makeLocation(for: node)
+                location: location
             ))
         }
 
         detected.append(DetectedString(
             value: rawValue,
-            location: makeLocation(for: node),
+            location: location,
             context: context,
-            confidence: confidence,
+            confidence: explanation.final,
             hasInterpolation: hasInterpolation,
-            enclosingContext: enclosing
+            enclosingContext: enclosing,
+            scoreExplanation: explanation
         ))
     }
 

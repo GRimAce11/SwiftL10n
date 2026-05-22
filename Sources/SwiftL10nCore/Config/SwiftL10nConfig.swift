@@ -100,28 +100,35 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         public let path: String
         /// Root enum name in the generated file. Default: `Assets`.
         public let enumName: String
+        /// Generate `ImageResource` accessors (iOS 16+) instead of `Image` for image assets.
+        /// Requires deployment target iOS 16+ / macOS 13+ / tvOS 16+ / watchOS 9+. Default: `false`.
+        public let useImageResource: Bool
 
         public init(
             enabled: Bool = false,
             path: String = "Sources/Generated/Assets.swift",
-            enumName: String = "Assets"
+            enumName: String = "Assets",
+            useImageResource: Bool = false
         ) {
-            self.enabled  = enabled
-            self.path     = path
-            self.enumName = enumName
+            self.enabled          = enabled
+            self.path             = path
+            self.enumName         = enumName
+            self.useImageResource = useImageResource
         }
 
         enum CodingKeys: String, CodingKey {
             case enabled
             case path
-            case enumName = "enum_name"
+            case enumName        = "enum_name"
+            case useImageResource = "use_image_resource"
         }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            enabled  = try c.decodeIfPresent(Bool.self,   forKey: .enabled)  ?? false
-            path     = try c.decodeIfPresent(String.self, forKey: .path)     ?? "Sources/Generated/Assets.swift"
-            enumName = try c.decodeIfPresent(String.self, forKey: .enumName) ?? "Assets"
+            enabled          = try c.decodeIfPresent(Bool.self,   forKey: .enabled)          ?? false
+            path             = try c.decodeIfPresent(String.self, forKey: .path)             ?? "Sources/Generated/Assets.swift"
+            enumName         = try c.decodeIfPresent(String.self, forKey: .enumName)         ?? "Assets"
+            useImageResource = try c.decodeIfPresent(Bool.self,   forKey: .useImageResource) ?? false
         }
     }
 

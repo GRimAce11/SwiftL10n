@@ -1,3 +1,5 @@
+import Foundation
+
 /// A hardcoded string literal found in SwiftUI source that is a candidate for localization.
 public struct DetectedString: Sendable, Hashable, Codable {
     /// The raw string value exactly as it appears in source (no surrounding quotes).
@@ -24,20 +26,46 @@ public struct DetectedString: Sendable, Hashable, Codable {
     /// The nearest enclosing Swift declarations at the detection site.
     public let enclosingContext: EnclosingContext
 
+    /// Full breakdown of how `confidence` was computed. `nil` when the string was
+    /// constructed manually (e.g. in tests) rather than through the scoring pipeline.
+    public let scoreExplanation: ScoreExplanation?
+
     public init(
         value: String,
         location: SourceLocation,
         context: DetectionContext,
         confidence: Double = 1.0,
         hasInterpolation: Bool = false,
-        enclosingContext: EnclosingContext = .empty
+        enclosingContext: EnclosingContext = .empty,
+        scoreExplanation: ScoreExplanation? = nil
     ) {
-        self.value = value
-        self.location = location
-        self.context = context
-        self.confidence = confidence
+        self.value            = value
+        self.location         = location
+        self.context          = context
+        self.confidence       = confidence
         self.hasInterpolation = hasInterpolation
         self.enclosingContext = enclosingContext
+        self.scoreExplanation = scoreExplanation
+    }
+}
+
+// MARK: - Suggestions
+
+extension DetectedString {
+    /// Suggested Swift property name for the generated localization API.
+    ///
+    /// Derived from `value` and `context` using the same logic as `CodeGenerator`.
+    /// Example: `"Delete Account"` in a `Button` → `"deleteAccountButtonTitle"`.
+    public var suggestedPropertyName: String {
+        let words = value
+            .components(separatedBy: CharacterSet(charactersIn: " \t\n-_.,;:!?()[]{}\"'→←↑↓•…"))
+            .filter { !$0.isEmpty }
+            .map { $0.filter(\.isLetter) }
+            .filter { !$0.isEmpty }
+        guard !words.isEmpty else { return "localizedString" }
+        let base = words[0].lowercased() + words.dropFirst().map(\.localizedCapitalized).joined()
+        let suffix = context.propertySuffix
+        return suffix.isEmpty ? base : base + suffix
     }
 }
 

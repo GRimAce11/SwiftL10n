@@ -59,6 +59,11 @@ Seven principles govern every design decision:
 - **Incremental adoption** — `ExistingLocalizationDetector` recognizes existing localization patterns (`L10n.`, `i18n.`, `Strings.`, `NSLocalizedString`) and skips them in `incremental` mode; production codebases with partial localization work on day one
 - **Migration modes** — `audit` (all strings), `incremental` (gaps only), `strict` (CI enforcement)
 - **Additive merge strategy** — `merge_strategy: region` preserves manual extensions below the generated block on every regeneration
+- **Inline suppression** — `// swiftl10n:ignore` on any line silences that line's detection; a `.note` diagnostic confirms the suppression fired
+- **Confidence explanations** — `--verbose` output shows the score breakdown for each detection: `+2% multi-word phrase, +1% title case, -12% very short (3 chars)`
+- **Fix suggestions** — every detected string exposes `suggestedPropertyName` (e.g. `deleteAccountButtonTitle`) in verbose output and JSON
+- **GitHub Actions annotations** — `--format github` emits `::warning file=…,line=…::` annotations consumed natively by GitHub CI
+- **`ImageResource` opt-in** — `use_image_resource: true` in `assets:` config generates `@available(iOS 16, …)` `ImageResource` accessors instead of `Image` functions
 - **Extensible** — add custom detection rules by conforming to `DetectionRule`
 - **Swift 6 ready** — strict concurrency enforced, fully `Sendable`, zero data races
 
@@ -87,7 +92,7 @@ Xcode shows two products. **Only add `SwiftL10nCore`:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.7.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.8.0"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -1060,7 +1065,7 @@ The same principle applies to localization: SwiftL10n knows which string keys yo
 
 ## Current Status
 
-**v0.7.0 — Production stable.**
+**v0.8.0 — Production stable.**
 
 Two infrastructure domains are active, both now with incremental adoption support:
 
@@ -1083,9 +1088,12 @@ Two infrastructure domains are active, both now with incremental adoption suppor
 - `.swiftl10n.yml` project config with auto-discovery
 - JSON diagnostics output (`--format json`)
 - Incremental scan cache (SHA-256 per-file, `.build/swiftl10n-cache.json`)
-- **Incremental adoption** — `ExistingLocalizationDetector` recognizes SwiftGen, NSLocalizedString, and custom patterns; `incremental`/`strict` migration modes
-- **Additive merge strategy** — `merge_strategy: region` preserves manual extensions across regenerations
-- 341 tests, 0 failures
+- **Incremental adoption** — `ExistingLocalizationDetector`, migration modes, `merge_strategy: region`
+- **Inline suppression** — `// swiftl10n:ignore` on any line; note diagnostic confirms suppression
+- **Confidence explanations** — `--verbose` score breakdown; `suggestedPropertyName` in verbose output and JSON
+- **GitHub Actions** — `--format github` emits native `::warning file=…::` annotations
+- **`ImageResource`** — `use_image_resource: true` generates `@available(iOS 16, …)` accessors
+- 371 tests, 0 failures
 
 ---
 
@@ -1101,7 +1109,7 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.6.1 | Asset code generation: namespace-aware `Assets.swift` from catalog | Released |
 | v0.6.2 | `SwiftL10n.scan()` unified entry point; `generateAssets()` free function; iOS / tvOS / watchOS compatibility fix | Released |
 | v0.7.0 | Incremental adoption infrastructure: `ExistingLocalizationDetector`, `SuppressionIndex`, migration modes (audit/incremental/strict), `merge_strategy: region`, `suggestion` diagnostic severity | Released |
-| v0.8 | Diagnostics ergonomics: `// swiftl10n:ignore` suppression, fix suggestions, confidence explanations in `--verbose`, GitHub Actions annotation format, `ImageResource` opt-in for iOS 16+ | Planned |
+| v0.8.0 | Diagnostics ergonomics: `// swiftl10n:ignore` inline suppression, `ScoreExplanation` + `--verbose` breakdown, `suggestedPropertyName`, `--format github` Actions annotations, `ImageResource` opt-in for iOS 16+ | Released |
 | v0.9 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
 | v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
 | v1.1 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
@@ -1198,7 +1206,7 @@ These constraints are not scheduled features. They are permanent decisions that 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.7.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.8.0"),
 ],
 targets: [
     .target(
@@ -1252,6 +1260,9 @@ swift test
 | `AssetScannerTests.swift` | All five call-site forms, `Image(systemName:)` excluded, validation |
 | `AssetCodeGeneratorTests.swift` | Identifier/type-name conversion, namespaces, collisions, determinism, config |
 | `AssetsGeneratorTests.swift` | `generateAssets()` end-to-end: catalog discovery, output path, parent-dir lookup |
+| `InlineSuppressionTests.swift` | `// swiftl10n:ignore` parsing, same-line suppression, scanner integration, UIKit assignment suppression |
+| `ConfidenceExplanationTests.swift` | `ScoreExplanation` structure, factor accuracy, verbose summary, `DetectedString` integration, `suggestedPropertyName` |
+| `ImageResourceTests.swift` | Config decoding, `@available` annotation, `ImageResource` vs `Image` output, color unaffected, namespace path, round-trip |
 | `ExistingLocalizationDetectorTests.swift` | Dot-path reconstruction, boundary-safe pattern matching, call vs member access, suppression locations, real-world fixtures |
 | `SuppressionIndexTests.swift` | O(1) lookup, file/line/column precision, merging, integration with detector |
 | `MigrationModeTests.swift` | Config decoding, pipeline mode propagation, existing pattern recognition, backwards compatibility |

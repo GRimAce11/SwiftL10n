@@ -1,3 +1,43 @@
+// MARK: - ScoreExplanation
+
+/// A breakdown of how a string's confidence score was computed.
+///
+/// Useful for understanding why a particular string was detected at a given
+/// confidence level. Shown in `--verbose` output and included in JSON diagnostics.
+///
+/// Example summary: `"+2% multi-word phrase, +1% title case, -12% very short (2 chars)"`
+public struct ScoreExplanation: Sendable, Codable, Equatable, Hashable {
+
+    public struct Factor: Sendable, Codable, Equatable, Hashable {
+        public let reason: String
+        public let delta: Double
+    }
+
+    /// Rule's base confidence before any content adjustments.
+    public let base: Double
+    /// Each adjustment that was applied, in order.
+    public let factors: [Factor]
+    /// Final clamped score: `base + Σ(factors)`, clamped to `[0, 1]`.
+    public let final: Double
+
+    public var isEmpty: Bool { factors.isEmpty }
+
+    /// Human-readable score breakdown for CLI output.
+    public var summary: String {
+        guard !factors.isEmpty else { return "" }
+        return factors.map { f in
+            let sign = f.delta >= 0 ? "+" : ""
+            return "\(sign)\(formatted(f.delta)) \(f.reason)"
+        }.joined(separator: ", ")
+    }
+
+    private func formatted(_ d: Double) -> String {
+        String(format: "%.0f%%", d * 100)
+    }
+}
+
+// MARK: - ConfidenceScorer
+
 /// Computes a confidence score for a detected string, blending the rule's base
 /// confidence with adjustments derived from the string content and its enclosing context.
 ///
@@ -11,89 +51,66 @@
 public struct ConfidenceScorer: Sendable {
     public init() {}
 
-    /// Compute the final confidence for a detected string.
-    ///
-    /// - Parameters:
-    ///   - value: The string template (may contain `{…}` interpolation markers).
-    ///   - baseConfidence: The confidence floor set by the firing `DetectionRule`.
-    ///   - enclosingContext: Nearest enclosing Swift declarations at the call site.
+    /// Fast path — returns just the final score without allocating factor storage.
     public func score(
         value: String,
         baseConfidence: Double,
         enclosingContext: EnclosingContext
     ) -> Double {
-        let delta = stringDelta(value) + contextDelta(enclosingContext)
-        return max(0.0, min(1.0, baseConfidence + delta))
+        explain(value: value, baseConfidence: baseConfidence, enclosingContext: enclosingContext).final
     }
 
-    // MARK: - String Content Adjustments
+    /// Returns the final score plus a full breakdown of every applied adjustment.
+    public func explain(
+        value: String,
+        baseConfidence: Double,
+        enclosingContext: EnclosingContext
+    ) -> ScoreExplanation {
+        var acc = Accumulator()
 
-    func stringDelta(_ value: String) -> Double {
+        // ── String content adjustments ─────────────────────────────────────────
         let trimmed = value.trimmingCharacters(in: .whitespaces)
-        var delta = 0.0
 
-        // Very short strings are suspicious (could be a key or symbol name).
-        // We still allow them through but with a confidence dip.
         switch trimmed.count {
-        case 0:     delta -= 0.30   // empty — should have been filtered, but guard anyway
-        case 1...2: delta -= 0.12
-        case 3...4: delta -= 0.04
+        case 0:     acc.add("empty string", -0.30)
+        case 1...2: acc.add("very short (\(trimmed.count) chars)", -0.12)
+        case 3...4: acc.add("short (\(trimmed.count) chars)", -0.04)
         default:    break
         }
 
-        // Very long strings are rarely UI labels.
-        if trimmed.count > 200 { delta -= 0.25 }
-        else if trimmed.count > 100 { delta -= 0.08 }
+        if trimmed.count > 200      { acc.add("very long (>\(trimmed.count) chars)", -0.25) }
+        else if trimmed.count > 100 { acc.add("long (\(trimmed.count) chars)", -0.08) }
 
-        let words = trimmed
-            .components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty }
+        let words = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
 
-        // Multi-word phrase → clearly human-readable, boost.
-        if words.count >= 2 { delta += 0.02 }
+        if words.count >= 2       { acc.add("multi-word phrase", +0.02) }
+        if words.count >= 2 && isTitleCase(words) { acc.add("title case", +0.01) }
+        if trimmed.first?.isUppercase == true { acc.add("starts uppercase", +0.01) }
 
-        // Title Case (all words start with uppercase) → likely a UI label.
-        if words.count >= 2 && isTitleCase(words) { delta += 0.01 }
+        if trimmed.contains(where: \.isNumber) { acc.add("contains digits", -0.03) }
 
-        // Starts with an uppercase letter → probably a sentence or heading.
-        if trimmed.first?.isUppercase == true { delta += 0.01 }
-
-        // Contains digits → reduced likelihood of being a pure UI label.
-        if trimmed.contains(where: \.isNumber) { delta -= 0.03 }
-
-        // ALL CAPS but not a short abbreviation (OK, ID, URL) → unusual for UI.
         if trimmed.count > 4,
            trimmed.filter(\.isLetter).allSatisfy(\.isUppercase),
            trimmed.contains(where: \.isLetter) {
-            delta -= 0.08
+            acc.add("all-caps", -0.08)
         }
 
-        // Contains uncommon special characters unlikely in natural language.
-        let unusualCharsSet: Set<Character> = ["{", "}", "[", "]", "<", ">", "|", "\\", "^", "~", "`", "@", "#", "$", "%", "*", "="]
-        if trimmed.contains(where: { unusualCharsSet.contains($0) }) {
-            delta -= 0.05
+        let unusualChars: Set<Character> = ["{", "}", "[", "]", "<", ">", "|", "\\", "^", "~", "`", "@", "#", "$", "%", "*", "="]
+        if trimmed.contains(where: { unusualChars.contains($0) }) {
+            acc.add("unusual characters", -0.05)
         }
 
-        return delta
-    }
-
-    // MARK: - Enclosing Context Adjustments
-
-    func contextDelta(_ context: EnclosingContext) -> Double {
-        var delta = 0.0
-
-        // Strings inside View-family types are very likely UI strings.
-        if let typeName = context.typeName {
+        // ── Enclosing context adjustments ──────────────────────────────────────
+        if let typeName = enclosingContext.typeName {
             let viewSuffixes = ["View", "Screen", "Page", "Controller", "ViewController"]
             if viewSuffixes.contains(where: { typeName.hasSuffix($0) }) {
-                delta += 0.02
+                acc.add("inside \(typeName) (View family)", +0.02)
             }
         }
+        if enclosingContext.propertyName == "body" { acc.add("inside body property", +0.01) }
 
-        // Strings inside the `body` computed property are canonical SwiftUI UI strings.
-        if context.propertyName == "body" { delta += 0.01 }
-
-        return delta
+        let final = max(0.0, min(1.0, baseConfidence + acc.delta))
+        return ScoreExplanation(base: baseConfidence, factors: acc.factors, final: final)
     }
 
     // MARK: - Helpers
@@ -103,5 +120,19 @@ public struct ConfidenceScorer: Sendable {
             guard let first = word.first else { return true }
             return first.isUppercase || !first.isLetter
         }
+    }
+}
+
+// MARK: - Internal accumulator
+
+/// Collects deltas and labels while scoring; zero overhead when explanation is unused.
+private struct Accumulator {
+    var delta = 0.0
+    var factors: [ScoreExplanation.Factor] = []
+
+    mutating func add(_ reason: String, _ d: Double) {
+        guard d != 0 else { return }
+        delta += d
+        factors.append(.init(reason: reason, delta: d))
     }
 }

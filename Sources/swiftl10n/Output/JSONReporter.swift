@@ -52,8 +52,15 @@ struct JSONReporter: Sendable {
                 let context: String
                 let confidence: Double
                 let hasInterpolation: Bool
+                let suggestedPropertyName: String
                 let file: String
                 let line: Int
+                let scoreExplanation: ScoreExplanation?
+
+                enum CodingKeys: String, CodingKey {
+                    case value, context, confidence, hasInterpolation, file, line, scoreExplanation
+                    case suggestedPropertyName = "suggested_property_name"
+                }
             }
         }
 
@@ -109,8 +116,10 @@ struct JSONReporter: Sendable {
                             context: s.context.displayName,
                             confidence: (s.confidence * 1000).rounded() / 1000,
                             hasInterpolation: s.hasInterpolation,
+                            suggestedPropertyName: s.suggestedPropertyName,
                             file: s.location.file,
-                            line: s.location.line
+                            line: s.location.line,
+                            scoreExplanation: s.scoreExplanation
                         )
                     }
                 )

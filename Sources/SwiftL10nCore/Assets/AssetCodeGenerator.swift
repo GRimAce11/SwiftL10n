@@ -32,10 +32,22 @@ public struct AssetCodeGenerator: Sendable {
         public let rootEnumName: String
         /// Swift access level for generated declarations. Default: `public`.
         public let accessLevel: String
+        /// Generate `ImageResource` accessors instead of `Image` for image assets.
+        ///
+        /// `ImageResource` is available on iOS 16+, macOS 13+, tvOS 16+, watchOS 9+.
+        /// Generated accessors are annotated with `@available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)`.
+        /// Set `true` only when your deployment target supports these OS versions.
+        /// Default: `false`.
+        public let useImageResource: Bool
 
-        public init(rootEnumName: String = "Assets", accessLevel: String = "public") {
-            self.rootEnumName = rootEnumName
-            self.accessLevel  = accessLevel
+        public init(
+            rootEnumName: String = "Assets",
+            accessLevel: String = "public",
+            useImageResource: Bool = false
+        ) {
+            self.rootEnumName     = rootEnumName
+            self.accessLevel      = accessLevel
+            self.useImageResource = useImageResource
         }
     }
 
@@ -207,8 +219,14 @@ public struct AssetCodeGenerator: Sendable {
             lines.append("")
             for entry in node.images {
                 lines.append("\(indent)/// Asset: \"\(entry.fullName)\"")
-                lines.append("\(indent)\(a) static func \(entry.identifier)() -> Image {")
-                lines.append("\(indent)    Image(\"\(escaped(entry.fullName))\")")
+                if configuration.useImageResource {
+                    lines.append("\(indent)@available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)")
+                    lines.append("\(indent)\(a) static var \(entry.identifier): ImageResource {")
+                    lines.append("\(indent)    ImageResource(name: \"\(escaped(entry.fullName))\", bundle: .main)")
+                } else {
+                    lines.append("\(indent)\(a) static func \(entry.identifier)() -> Image {")
+                    lines.append("\(indent)    Image(\"\(escaped(entry.fullName))\")")
+                }
                 lines.append("\(indent)}")
                 lines.append("")
             }

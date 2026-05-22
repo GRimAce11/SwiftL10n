@@ -97,13 +97,36 @@ struct ScanCommand: ParsableCommand {
             let json = try JSONReporter().report(result)
             print(json)
 
+        case .github:
+            // GitHub Actions annotation format
+            for d in result.diagnostics where d.severity >= .warning {
+                let level = d.severity == .error ? "error" : "warning"
+                if let loc = d.location {
+                    print("::\(level) file=\(loc.file),line=\(loc.line),col=\(loc.column),title=SwiftL10n::\(d.message)")
+                } else {
+                    print("::\(level) title=SwiftL10n::\(d.message)")
+                }
+            }
+            if !quiet {
+                let modeTag = result.migrationMode != .audit ? " [\(result.migrationMode.rawValue)]" : ""
+                print("::notice title=SwiftL10n::Found \(result.totalStrings) hardcoded string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s)\(modeTag)")
+                if result.existingLocalizationCount > 0 {
+                    print("::notice title=SwiftL10n::\(result.existingLocalizationCount) existing localization call site(s) recognized")
+                }
+            }
+
         case .console:
             if verbose {
                 for ns in result.namespaces {
                     printInfo("── \(ns.sourceFile) (\(ns.strings.count) string(s))")
                     for s in ns.strings {
-                        let conf = String(format: "%.2f", s.confidence)
-                        printInfo("  [\(s.context.displayName)] \"\(s.value)\" conf:\(conf) — \(s.location)")
+                        let conf = String(format: "%.0f%%", s.confidence * 100)
+                        var line = "  [\(s.context.displayName)] \"\(s.value)\"  \(conf) — \(s.location)"
+                        if let expl = s.scoreExplanation, !expl.factors.isEmpty {
+                            line += "\n    score: \(expl.summary)"
+                        }
+                        line += "\n    → i18n.<Namespace>.\(s.suggestedPropertyName)()"
+                        printInfo(line)
                     }
                 }
             }
@@ -173,7 +196,8 @@ struct ScanCommand: ParsableCommand {
         if let assetsPath = assetsOutputPath {
             let catalog = try AssetCatalogParser.parseCatalogs(in: configBaseURL)
             let generatorConfig = AssetCodeGenerator.Configuration(
-                rootEnumName: effectiveConfig.assets.enumName
+                rootEnumName: effectiveConfig.assets.enumName,
+                useImageResource: effectiveConfig.assets.useImageResource
             )
             let assetsCode = AssetCodeGenerator(configuration: generatorConfig).generate(catalog: catalog)
             let assetsURL  = URL(fileURLWithPath: assetsPath)
@@ -213,7 +237,7 @@ struct ScanCommand: ParsableCommand {
 // MARK: - Argument types
 
 enum OutputFormat: String, ExpressibleByArgument, Sendable {
-    case console, json
+    case console, json, github
 }
 
 enum FailSeverity: String, ExpressibleByArgument, Sendable {

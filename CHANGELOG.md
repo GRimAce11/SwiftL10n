@@ -10,6 +10,57 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.8.0] — 2026-05-22
+
+### Added
+
+- **`// swiftl10n:ignore` inline suppression** — any string literal on a line containing `swiftl10n:ignore` is dropped from scan results. A `.note` diagnostic is emitted to confirm the suppression fired. Honoured automatically by `StringScanner.scan()` with zero configuration — no new API, no flags needed. Both `FunctionCallExprSyntax` (SwiftUI) and `SequenceExprSyntax` (UIKit property assignments) are suppressed. `// swiftl10n:ignore — reason here` works too (arbitrary text after the marker is ignored).
+
+- **`ScoreExplanation`** — new `Sendable, Codable, Equatable, Hashable` model returned by `ConfidenceScorer.explain()`. Captures: `base` (rule's starting confidence), `factors: [Factor]` (each named delta applied), `final` (clamped result). `Factor` has `reason: String` and `delta: Double`. `summary` property produces a human-readable breakdown: `"+2% multi-word phrase, +1% title case, -4% short (3 chars)"`.
+
+- **`ConfidenceScorer.explain(value:baseConfidence:enclosingContext:) -> ScoreExplanation`** — full scoring breakdown. `score()` is now a thin wrapper calling `explain()` and returning `.final`. Every factor previously computed as an anonymous delta is now a named `Factor` (e.g. `"very short (2 chars)"`, `"inside SettingsView (View family)"`, `"all-caps"`, `"contains digits"`).
+
+- **`DetectedString.scoreExplanation: ScoreExplanation?`** — populated by `StringScannerVisitor` on every detection; `nil` only for manually constructed `DetectedString` values (e.g. in tests). Fully `Codable`, included in incremental cache entries.
+
+- **`DetectedString.suggestedPropertyName: String`** — computed extension property. Derives the camelCase Swift method name from `value` and `context` (same algorithm as `CodeGenerator`): `"Delete Account"` in a `Button` → `"deleteAccountButtonTitle"`. No storage, no Codable impact, no configuration needed.
+
+- **`--verbose` confidence breakdown** — when `--verbose` is set, each detected string now shows its score explanation and fix suggestion on separate indented lines:
+  ```
+  [Text] "Delete Account"  95% — SettingsView.swift:42:13
+      score: +2% multi-word phrase, +1% starts uppercase
+      → i18n.<Namespace>.deleteAccount()
+  ```
+
+- **`--format github`** — new `OutputFormat` case. Emits GitHub Actions annotation syntax: `::warning file=…,line=…,col=…,title=SwiftL10n::…` for each warning/error diagnostic; `::notice title=SwiftL10n::…` for the scan summary. Use in CI:
+  ```yaml
+  - run: swiftl10n scan --format github
+  ```
+
+- **`ImageResource` opt-in** — `assets.use_image_resource: true` in config generates type-safe `ImageResource` accessors instead of `Image` functions for image assets:
+  ```swift
+  @available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
+  public static var profileIcon: ImageResource {
+      ImageResource(name: "profile_icon", bundle: .main)
+  }
+  ```
+  Colors are unaffected. Only image assets get `ImageResource` accessors. Default: `false` — no breaking change.
+
+- **`InlineSuppression`** — new `Sendable` type in `SwiftL10nCore/Detection/`. Scans source text in O(lines) time; returns O(1) line-number lookup. Used internally by `StringScanner`; no external API change needed.
+
+- **30 new tests** across 3 new test files:
+  - `InlineSuppressionTests` — comment parsing, same-line suppression, multi-line, trailing text, `StringScanner` integration (SwiftUI + UIKit), emitted note diagnostic.
+  - `ConfidenceExplanationTests` — base/final accuracy, named factors, `ScoreExplanation.summary`, `DetectedString` integration, `suggestedPropertyName` per context, Codable round-trip.
+  - `ImageResourceTests` — config decoding, `@available` annotation, `ImageResource` vs `Image` output, colors unaffected, namespaced path, config round-trip.
+
+### Changed
+
+- `ConfidenceScorer` internals refactored to use `Accumulator` struct; all deltas now carry named reasons. The public `score()` API is unchanged (still returns `Double`); `explain()` is the new first-class method.
+- `JSONReporter.StringEntry` gains `suggested_property_name: String` and `score_explanation: ScoreExplanation?` fields. The `swiftl10n_version` field now tracks `SwiftL10nCoreVersion.current` dynamically instead of a hardcoded string.
+- `--verbose` console format: confidence shown as `95%` (not `0.95`) and now includes score breakdown and fix suggestion lines.
+- Version bumped to `0.8.0`; all 0.7.x incremental cache entries auto-invalidated.
+
+---
+
 ## [0.7.0] — 2026-05-22
 
 ### Added
@@ -301,7 +352,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.2...0.7.0
 [0.6.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.1...0.6.2
 [0.6.1]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.0...0.6.1
