@@ -1,5 +1,5 @@
 {
-  "originHash" : "7b384f2dd7a49a64a68e3c6a83f792820fce630b957cab6cdfe6fd23ef129f5b",
+  "originHash" : "37a6cdaa163faa10abb5360721853257d64df33387629b68347a35dbac6ba0dc",
   "pins" : [
     {
       "identity" : "swift-argument-parser",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "0687f71944021d616d34d922343dcef086855920",
         "version" : "600.0.1"
+      }
+    },
+    {
+      "identity" : "yams",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jpsim/Yams.git",
+      "state" : {
+        "revision" : "3d6871d5b4a5cd519adf233fbb576e0a2af71c17",
+        "version" : "5.4.0"
       }
     }
   ],
