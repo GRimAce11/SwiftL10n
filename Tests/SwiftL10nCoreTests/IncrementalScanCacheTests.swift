@@ -162,7 +162,7 @@ final class IncrementalScanCacheTests: XCTestCase {
 
     // MARK: - ScanPipeline incremental integration
 
-    func testIncrementalPipelineServesCacheOnSecondRun() throws {
+    func testIncrementalPipelineServesCacheOnSecondRun() async throws {
         let source = """
         import SwiftUI
         struct V: View {
@@ -180,17 +180,17 @@ final class IncrementalScanCacheTests: XCTestCase {
         let pipeline = ScanPipeline(config: config, baseURL: tempDir)
 
         // First run — cold cache
-        let run1 = try pipeline.run(sources: [tempDir.path])
+        let run1 = try await pipeline.run(sources: [tempDir.path])
         XCTAssertEqual(run1.cacheHits, 0)
         XCTAssertGreaterThanOrEqual(run1.totalStrings, 1)
 
         // Second run — warm cache, file unchanged
-        let run2 = try pipeline.run(sources: [tempDir.path])
+        let run2 = try await pipeline.run(sources: [tempDir.path])
         XCTAssertEqual(run2.cacheHits, 1)
         XCTAssertEqual(run2.totalStrings, run1.totalStrings)
     }
 
-    func testIncrementalPipelineRescansModifiedFile() throws {
+    func testIncrementalPipelineRescansModifiedFile() async throws {
         let fileURL = tempDir.appendingPathComponent("ModView.swift")
         try """
         import SwiftUI
@@ -205,7 +205,7 @@ final class IncrementalScanCacheTests: XCTestCase {
         let pipeline = ScanPipeline(config: config, baseURL: tempDir)
 
         // First run
-        let run1 = try pipeline.run(sources: [tempDir.path])
+        let run1 = try await pipeline.run(sources: [tempDir.path])
         let values1 = run1.namespaces.flatMap { $0.strings.map(\.value) }
         XCTAssertTrue(values1.contains("Version One"))
 
@@ -216,7 +216,7 @@ final class IncrementalScanCacheTests: XCTestCase {
         """.write(to: fileURL, atomically: true, encoding: .utf8)
 
         // Second run — cache miss, fresh scan
-        let run2 = try pipeline.run(sources: [tempDir.path])
+        let run2 = try await pipeline.run(sources: [tempDir.path])
         XCTAssertEqual(run2.cacheHits, 0)
         let values2 = run2.namespaces.flatMap { $0.strings.map(\.value) }
         XCTAssertTrue(values2.contains("Version Two"))

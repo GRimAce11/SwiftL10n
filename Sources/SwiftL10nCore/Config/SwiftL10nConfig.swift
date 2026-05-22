@@ -24,6 +24,24 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
     public let existingLocalization: ExistingLocalizationConfig
     /// Incremental adoption migration mode. Default: `audit` (current behavior unchanged).
     public let migration: MigrationConfig
+    /// Controls how namespace identifiers are derived from source file paths.
+    /// Default: `file` — strip SwiftUI suffix from the file name (pre-v0.9 behavior).
+    public let namespaceStrategy: NamespaceStrategy
+
+    // MARK: - Nested: NamespaceStrategy
+
+    /// Controls how namespace identifiers are derived from source file names.
+    public enum NamespaceStrategy: String, Sendable, Codable, Equatable {
+        /// (Default) Strip the SwiftUI/UIKit suffix from the file name.
+        /// `SettingsView.swift` → `Settings`. Pre-v0.9 behavior.
+        case file
+        /// Always prefix with the parent directory name.
+        /// `Payment/SettingsView.swift` → `PaymentSettings`.
+        case directory
+        /// `file` when all names are unique; `directory`-qualified when a collision is detected.
+        /// Recommended for multi-module projects.
+        case auto
+    }
 
     // MARK: - Nested: ExistingLocalizationConfig
 
@@ -189,7 +207,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         incremental: false,
         assets: .init(),
         existingLocalization: .default,
-        migration: .default
+        migration: .default,
+        namespaceStrategy: .file
     )
 
     // MARK: - Init
@@ -202,7 +221,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         incremental: Bool = false,
         assets: AssetsOutputConfig = .init(),
         existingLocalization: ExistingLocalizationConfig = .default,
-        migration: MigrationConfig = .default
+        migration: MigrationConfig = .default,
+        namespaceStrategy: NamespaceStrategy = .file
     ) {
         self.sources              = sources
         self.output               = output
@@ -212,6 +232,7 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         self.assets               = assets
         self.existingLocalization = existingLocalization
         self.migration            = migration
+        self.namespaceStrategy    = namespaceStrategy
     }
 
     // MARK: - CodingKeys (snake_case YAML ↔ camelCase Swift)
@@ -225,6 +246,7 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         case assets
         case existingLocalization = "existing_localization"
         case migration
+        case namespaceStrategy    = "namespace_strategy"
     }
 
     // Provide defaults for every field so a minimal YAML (e.g. `sources: [Sources]`) is valid.
@@ -238,5 +260,6 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         assets               = try c.decodeIfPresent(AssetsOutputConfig.self,     forKey: .assets)               ?? .init()
         existingLocalization = try c.decodeIfPresent(ExistingLocalizationConfig.self, forKey: .existingLocalization) ?? .default
         migration            = try c.decodeIfPresent(MigrationConfig.self,        forKey: .migration)            ?? .default
+        namespaceStrategy    = try c.decodeIfPresent(NamespaceStrategy.self,      forKey: .namespaceStrategy)    ?? .file
     }
 }

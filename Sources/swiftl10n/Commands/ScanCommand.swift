@@ -2,7 +2,7 @@ import ArgumentParser
 import SwiftL10nCore
 import Foundation
 
-struct ScanCommand: ParsableCommand {
+struct ScanCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "scan",
         abstract: "Scan Swift source files for hardcoded localizable strings."
@@ -42,7 +42,7 @@ struct ScanCommand: ParsableCommand {
 
     // MARK: - Run
 
-    mutating func run() throws {
+    mutating func run() async throws {
         // ── 1. Load config ────────────────────────────────────────────────────
         let loadedConfig: SwiftL10nConfig?
         let configBaseURL: URL
@@ -85,7 +85,7 @@ struct ScanCommand: ParsableCommand {
 
         // ── 4. Run ScanPipeline ───────────────────────────────────────────────
         let pipeline = ScanPipeline(config: effectiveConfig, baseURL: configBaseURL)
-        let result = try pipeline.run(
+        let result = try await pipeline.run(
             sources: sourcePaths,
             minimumConfidence: minConfidence,
             migrationMode: migrationMode?.coreMode
@@ -132,15 +132,19 @@ struct ScanCommand: ParsableCommand {
             }
 
             if !quiet {
-                let cacheNote = result.cacheHits > 0 ? " (\(result.cacheHits) cached)" : ""
+                let cacheNote  = result.cacheHits > 0 ? " (\(result.cacheHits) cached)" : ""
                 let modeNote: String = switch result.migrationMode {
                 case .audit:       ""
-                case .incremental: " [incremental mode]"
-                case .strict:      " [strict mode]"
+                case .incremental: " [incremental]"
+                case .strict:      " [strict]"
                 }
-                print("Found \(result.totalStrings) string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s)\(cacheNote)\(modeNote).")
+                let duration   = String(format: "%.2fs", result.scanDuration)
+                print("Found \(result.totalStrings) string(s) across \(result.namespaces.count) namespace(s) in \(result.scannedFiles) file(s)\(cacheNote)\(modeNote) in \(duration).")
                 if result.existingLocalizationCount > 0 {
                     print("  \(result.existingLocalizationCount) existing localization call site(s) recognized and skipped.")
+                }
+                if result.staleEntriesRemoved > 0 {
+                    print("  \(result.staleEntriesRemoved) stale cache entry(s) removed.")
                 }
                 for ns in result.namespaces.sorted(by: { $0.name < $1.name }) {
                     print("  \(ns.name): \(ns.strings.count) string(s)")

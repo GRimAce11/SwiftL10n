@@ -70,7 +70,7 @@ final class MigrationModeTests: XCTestCase {
 
     // MARK: - Pipeline: audit mode (current behavior)
 
-    func testAuditModeReportsAllStrings() throws {
+    func testAuditModeReportsAllStrings() async throws {
         try writeFile(name: "SettingsView.swift", source: """
         import SwiftUI
         struct SettingsView: View {
@@ -85,7 +85,7 @@ final class MigrationModeTests: XCTestCase {
             sources: [tempDir.path],
             migration: .init(mode: .audit)
         )
-        let result = try ScanPipeline(config: config, baseURL: tempDir).run()
+        let result = try await ScanPipeline(config: config, baseURL: tempDir).run()
         XCTAssertEqual(result.migrationMode, .audit)
         XCTAssertGreaterThanOrEqual(result.totalStrings, 2)
         XCTAssertEqual(result.existingLocalizationCount, 0)
@@ -93,7 +93,7 @@ final class MigrationModeTests: XCTestCase {
 
     // MARK: - Pipeline: incremental mode
 
-    func testIncrementalModeRecognizesExistingPatterns() throws {
+    func testIncrementalModeRecognizesExistingPatterns() async throws {
         try writeFile(name: "SettingsView.swift", source: """
         import SwiftUI
         struct SettingsView: View {
@@ -110,26 +110,26 @@ final class MigrationModeTests: XCTestCase {
             existingLocalization: .init(patterns: ["L10n."]),
             migration: .init(mode: .incremental)
         )
-        let result = try ScanPipeline(config: config, baseURL: tempDir).run()
+        let result = try await ScanPipeline(config: config, baseURL: tempDir).run()
         XCTAssertEqual(result.migrationMode, .incremental)
         XCTAssertGreaterThanOrEqual(result.existingLocalizationCount, 2,
             "L10n.Settings.title and L10n.Settings.saveButton should be recognized")
     }
 
-    func testPipelineResultCarriesMigrationMode() throws {
+    func testPipelineResultCarriesMigrationMode() async throws {
         try writeFile(name: "View.swift", source: "import SwiftUI\nstruct V: View { var body: some View { Text(\"Hi\") } }")
 
         let config = SwiftL10nConfig(
             sources: [tempDir.path],
             migration: .init(mode: .incremental)
         )
-        let result = try ScanPipeline(config: config, baseURL: tempDir).run()
+        let result = try await ScanPipeline(config: config, baseURL: tempDir).run()
         XCTAssertEqual(result.migrationMode, .incremental)
     }
 
     // MARK: - Pipeline: suppression integration
 
-    func testSuppressionReducesDetections() throws {
+    func testSuppressionReducesDetections() async throws {
         // A view that wraps NSLocalizedString — the string literal should be suppressed
         try writeFile(name: "LocalizationHelper.swift", source: #"""
         import Foundation
@@ -145,15 +145,15 @@ final class MigrationModeTests: XCTestCase {
         )
 
         // Without suppression: no detection because NSLocalizedString has no rule
-        let r1 = try ScanPipeline(config: noSuppression, baseURL: tempDir).run()
+        let r1 = try await ScanPipeline(config: noSuppression, baseURL: tempDir).run()
         // With suppression: same — the string isn't detected by StringScanner anyway
-        let r2 = try ScanPipeline(config: withSuppression, baseURL: tempDir).run()
+        let r2 = try await ScanPipeline(config: withSuppression, baseURL: tempDir).run()
 
         // The key assertion: suppressed version should not produce MORE detections
         XCTAssertLessThanOrEqual(r2.totalStrings, r1.totalStrings)
     }
 
-    func testExistingLocalizationCountAccumulates() throws {
+    func testExistingLocalizationCountAccumulates() async throws {
         try writeFile(name: "SettingsView.swift", source: """
         import SwiftUI
         struct SettingsView: View {
@@ -179,7 +179,7 @@ final class MigrationModeTests: XCTestCase {
             existingLocalization: .init(patterns: ["i18n."]),
             migration: .init(mode: .incremental)
         )
-        let result = try ScanPipeline(config: config, baseURL: tempDir).run()
+        let result = try await ScanPipeline(config: config, baseURL: tempDir).run()
         XCTAssertEqual(result.existingLocalizationCount, 5,
             "3 calls in SettingsView + 2 in OnboardingView")
         XCTAssertEqual(result.totalStrings, 0,
@@ -188,7 +188,7 @@ final class MigrationModeTests: XCTestCase {
 
     // MARK: - Backwards compatibility
 
-    func testMinimalConfigPreservesAuditBehavior() throws {
+    func testMinimalConfigPreservesAuditBehavior() async throws {
         try writeFile(name: "View.swift", source: """
         import SwiftUI
         struct V: View {
@@ -205,7 +205,7 @@ final class MigrationModeTests: XCTestCase {
         XCTAssertEqual(config.migration.mode, .audit)
         XCTAssertFalse(config.existingLocalization.isActive)
 
-        let result = try ScanPipeline(config: config, baseURL: tempDir).run()
+        let result = try await ScanPipeline(config: config, baseURL: tempDir).run()
         XCTAssertGreaterThanOrEqual(result.totalStrings, 1, "Audit mode still reports hardcoded strings")
     }
 

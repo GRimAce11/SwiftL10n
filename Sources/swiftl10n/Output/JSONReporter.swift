@@ -25,12 +25,16 @@ struct JSONReporter: Sendable {
             let cacheHits: Int
             let existingLocalized: Int
             let migrationMode: String
+            let scanDuration: Double
+            let staleEntriesRemoved: Int
 
             enum CodingKeys: String, CodingKey {
                 case files, strings, namespaces, warnings, errors
-                case cacheHits       = "cache_hits"
-                case existingLocalized = "existing_localized"
-                case migrationMode   = "migration_mode"
+                case cacheHits           = "cache_hits"
+                case existingLocalized   = "existing_localized"
+                case migrationMode       = "migration_mode"
+                case scanDuration        = "scan_duration_seconds"
+                case staleEntriesRemoved = "stale_entries_removed"
             }
         }
 
@@ -86,14 +90,16 @@ struct JSONReporter: Sendable {
             schemaVersion: "1",
             swiftl10nVersion: Self.version,
             scanned: .init(
-                files: result.scannedFiles,
-                strings: result.totalStrings,
-                namespaces: result.namespaces.count,
-                warnings: result.warningCount,
-                errors: result.errorCount,
-                cacheHits: result.cacheHits,
-                existingLocalized: result.existingLocalizationCount,
-                migrationMode: result.migrationMode.rawValue
+                files:               result.scannedFiles,
+                strings:             result.totalStrings,
+                namespaces:          result.namespaces.count,
+                warnings:            result.warningCount,
+                errors:              result.errorCount,
+                cacheHits:           result.cacheHits,
+                existingLocalized:   result.existingLocalizationCount,
+                migrationMode:       result.migrationMode.rawValue,
+                scanDuration:        (result.scanDuration * 1000).rounded() / 1000,
+                staleEntriesRemoved: result.staleEntriesRemoved
             ),
             diagnostics: result.diagnostics
                 .filter { $0.severity != .note }

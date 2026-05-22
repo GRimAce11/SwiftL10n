@@ -41,7 +41,7 @@ final class ScanPipelineTests: XCTestCase {
 
     // MARK: - Basic scanning
 
-    func testFindsLocalizedStrings() throws {
+    func testFindsLocalizedStrings() async throws {
         try write(source: """
         import SwiftUI
         struct V: View {
@@ -52,7 +52,7 @@ final class ScanPipelineTests: XCTestCase {
         }
         """, name: "ContentView.swift")
 
-        let result = try pipeline().run(sources: [tempDir.path])
+        let result = try await pipeline().run(sources: [tempDir.path])
         XCTAssertEqual(result.scannedFiles, 1)
         XCTAssertEqual(result.totalStrings, 2)
         XCTAssertEqual(result.namespaces.count, 1)
@@ -60,43 +60,43 @@ final class ScanPipelineTests: XCTestCase {
         XCTAssertEqual(result.namespaces[0].name, "Content")
     }
 
-    func testEmptyFileProducesNoStrings() throws {
+    func testEmptyFileProducesNoStrings() async throws {
         try write(source: "import SwiftUI\n", name: "Empty.swift")
 
-        let result = try pipeline().run(sources: [tempDir.path])
+        let result = try await pipeline().run(sources: [tempDir.path])
         XCTAssertEqual(result.scannedFiles, 1)
         XCTAssertEqual(result.totalStrings, 0)
         XCTAssertEqual(result.namespaces.count, 0)
     }
 
-    func testScansMultipleFiles() throws {
+    func testScansMultipleFiles() async throws {
         try write(source: #"import SwiftUI; struct A: View { var body: some View { Text("Alpha") } }"#,
                   name: "AlphaView.swift")
         try write(source: #"import SwiftUI; struct B: View { var body: some View { Text("Beta") } }"#,
                   name: "BetaView.swift")
 
-        let result = try pipeline().run(sources: [tempDir.path])
+        let result = try await pipeline().run(sources: [tempDir.path])
         XCTAssertEqual(result.scannedFiles, 2)
         XCTAssertEqual(result.totalStrings, 2)
         XCTAssertEqual(result.namespaces.count, 2)
     }
 
-    func testMissingSourcePathEmitsError() throws {
-        let result = try pipeline().run(sources: ["/nonexistent/path"])
+    func testMissingSourcePathEmitsError() async throws {
+        let result = try await pipeline().run(sources: ["/nonexistent/path"])
         XCTAssertTrue(result.errorCount > 0)
     }
 
     // MARK: - Confidence filtering
 
-    func testConfidenceFilterDropsLowScoringStrings() throws {
+    func testConfidenceFilterDropsLowScoringStrings() async throws {
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("ok") } }"#,
                   name: "SmallView.swift")
 
         let highThreshold = pipeline(confidence: 0.99)
-        let highResult = try highThreshold.run(sources: [tempDir.path])
+        let highResult    = try await highThreshold.run(sources: [tempDir.path])
 
-        let noFilter = pipeline(confidence: 0.0)
-        let allResult = try noFilter.run(sources: [tempDir.path])
+        let noFilter  = pipeline(confidence: 0.0)
+        let allResult = try await noFilter.run(sources: [tempDir.path])
 
         // The short string "ok" likely scores below 0.99
         XCTAssertLessThanOrEqual(highResult.totalStrings, allResult.totalStrings)
@@ -104,7 +104,7 @@ final class ScanPipelineTests: XCTestCase {
 
     // MARK: - Exclusion
 
-    func testExcludesDirectoryByPattern() throws {
+    func testExcludesDirectoryByPattern() async throws {
         let genDir = tempDir.appendingPathComponent("Generated")
         try FileManager.default.createDirectory(at: genDir, withIntermediateDirectories: true)
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Generated") } }"#,
@@ -112,25 +112,25 @@ final class ScanPipelineTests: XCTestCase {
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Live") } }"#,
                   name: "ContentView.swift")
 
-        let result = try pipeline(excludes: ["Generated"]).run(sources: [tempDir.path])
+        let result = try await pipeline(excludes: ["Generated"]).run(sources: [tempDir.path])
         let values = result.namespaces.flatMap { $0.strings.map(\.value) }
         XCTAssertFalse(values.contains("Generated"), "File inside excluded directory must be skipped")
         XCTAssertTrue(values.contains("Live"))
     }
 
-    func testExcludesGlobPattern() throws {
+    func testExcludesGlobPattern() async throws {
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Generated") } }"#,
                   name: "Strings.generated.swift")
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Live") } }"#,
                   name: "ContentView.swift")
 
-        let result = try pipeline(excludes: ["*.generated.swift"]).run(sources: [tempDir.path])
+        let result = try await pipeline(excludes: ["*.generated.swift"]).run(sources: [tempDir.path])
         let values = result.namespaces.flatMap { $0.strings.map(\.value) }
         XCTAssertFalse(values.contains("Generated"), "*.generated.swift must be excluded")
         XCTAssertTrue(values.contains("Live"))
     }
 
-    func testExcludesDeepGlobPattern() throws {
+    func testExcludesDeepGlobPattern() async throws {
         let subDir = tempDir.appendingPathComponent("Sub")
         try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Deep") } }"#,
@@ -138,7 +138,7 @@ final class ScanPipelineTests: XCTestCase {
         try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Live") } }"#,
                   name: "ContentView.swift")
 
-        let result = try pipeline(excludes: ["**/*.generated.swift"]).run(sources: [tempDir.path])
+        let result = try await pipeline(excludes: ["**/*.generated.swift"]).run(sources: [tempDir.path])
         let values = result.namespaces.flatMap { $0.strings.map(\.value) }
         XCTAssertFalse(values.contains("Deep"), "**/*.generated.swift must exclude deep file")
         XCTAssertTrue(values.contains("Live"))
@@ -146,7 +146,7 @@ final class ScanPipelineTests: XCTestCase {
 
     // MARK: - PipelineResult computed properties
 
-    func testResultCountsWarnWarningsCorrectly() throws {
+    func testResultCountsWarnWarningsCorrectly() async throws {
         try write(source: #"""
         import SwiftUI
         struct V: View {
@@ -155,7 +155,23 @@ final class ScanPipelineTests: XCTestCase {
         }
         """#, name: "InterpView.swift")
 
-        let result = try pipeline().run(sources: [tempDir.path])
+        let result = try await pipeline().run(sources: [tempDir.path])
         XCTAssertGreaterThanOrEqual(result.warningCount, 1)
+    }
+
+    // MARK: - v0.9 fields
+
+    func testScanDurationIsPositive() async throws {
+        try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Hi") } }"#,
+                  name: "View.swift")
+        let result = try await pipeline().run(sources: [tempDir.path])
+        XCTAssertGreaterThan(result.scanDuration, 0)
+    }
+
+    func testStaleEntriesRemovedIsZeroWithoutIncremental() async throws {
+        try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Hi") } }"#,
+                  name: "View.swift")
+        let result = try await pipeline().run(sources: [tempDir.path])
+        XCTAssertEqual(result.staleEntriesRemoved, 0)
     }
 }

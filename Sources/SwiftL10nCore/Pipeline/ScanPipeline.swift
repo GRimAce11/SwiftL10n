@@ -1,13 +1,14 @@
 import Foundation
 
-/// Orchestrates the full scan pipeline: file collection → pre-pass → scanning → namespace inference.
+/// Orchestrates the full scan pipeline: file collection → pre-pass → parallel scanning
+/// → namespace inference → diagnostics.
 ///
 /// `ScanPipeline` is the reusable core extracted from `ScanCommand`. It owns no I/O
 /// state and is safe to call multiple times.
 ///
 /// ```swift
 /// let pipeline = ScanPipeline(config: config, baseURL: projectRoot)
-/// let result = try pipeline.run()
+/// let result = try await pipeline.run()
 /// ```
 public struct ScanPipeline: Sendable {
 
@@ -28,6 +29,10 @@ public struct ScanPipeline: Sendable {
         public let suppressedStringCount: Int
         /// Migration mode used for this run.
         public let migrationMode: SwiftL10nConfig.MigrationConfig.Mode
+        /// Wall-clock time from `run()` invocation to result.
+        public let scanDuration: TimeInterval
+        /// Cache entries removed because the corresponding source file no longer exists.
+        public let staleEntriesRemoved: Int
 
         /// Sum of strings across all namespaces.
         public var totalStrings: Int { namespaces.reduce(0) { $0 + $1.strings.count } }
@@ -38,10 +43,7 @@ public struct ScanPipeline: Sendable {
 
     // MARK: - Configuration
 
-    /// Project-level config (sources, exclusions, confidence, etc.).
     public let config: SwiftL10nConfig
-    /// Directory that relative paths in `config` are resolved against —
-    /// usually the directory containing `.swiftl10n.yml`, or the cwd.
     public let baseURL: URL
 
     public init(config: SwiftL10nConfig, baseURL: URL) {
@@ -51,7 +53,8 @@ public struct ScanPipeline: Sendable {
 
     // MARK: - Run
 
-    /// Collect files, run pre-pass, scan, and infer namespaces.
+    /// Collect files, run the pre-pass and string scanner in parallel, infer namespaces,
+    /// and return a complete `PipelineResult`.
     ///
     /// - Parameters:
     ///   - sources: Override `config.sources`. `nil` uses config values.
@@ -61,35 +64,26 @@ public struct ScanPipeline: Sendable {
         sources: [String]? = nil,
         minimumConfidence: Double? = nil,
         migrationMode: SwiftL10nConfig.MigrationConfig.Mode? = nil
-    ) throws -> PipelineResult {
+    ) async throws -> PipelineResult {
+        let startTime           = Date()
         let effectiveSources    = sources ?? config.sources
         let effectiveConfidence = minimumConfidence ?? config.minimumConfidence
         let effectiveMode       = migrationMode ?? config.migration.mode
+        let strategy            = config.namespaceStrategy
 
-        // Pre-pass is active when patterns are configured OR mode is incremental/strict.
         let prePasActive = config.existingLocalization.isActive
             || effectiveMode == .incremental
             || effectiveMode == .strict
 
-        let detector = prePasActive
+        let detector: ExistingLocalizationDetector? = prePasActive
             ? ExistingLocalizationDetector(config: config.existingLocalization.detectorConfig)
             : nil
 
         let scanner = StringScanner(minimumConfidence: effectiveConfidence)
         let engine  = DiagnosticsEngine()
-        var fileResults: [(filePath: String, strings: [DetectedString])] = []
-        var scannedFileCount          = 0
-        var cacheHits                 = 0
-        var existingLocalizationCount = 0
-        var suppressedStringCount     = 0
 
-        // Load incremental cache (no-op when incremental is disabled)
-        let cacheURL = baseURL.appendingPathComponent(ScanCache.defaultRelativePath)
-        var cache: ScanCache = config.incremental
-            ? ((try? IncrementalScanCache.load(from: cacheURL)) ?? ScanCache())
-            : ScanCache()
-        var cacheModified = false
-
+        // ── 1. Collect all file URLs (sequential) ──────────────────────────────
+        var allFiles: [URL] = []
         for source in effectiveSources {
             let sourceURL = resolvedURL(for: source)
             var isDir: ObjCBool = false
@@ -97,97 +91,149 @@ public struct ScanPipeline: Sendable {
                 engine.emit(.error, "Source path not found: \(source)")
                 continue
             }
+            if isDir.boolValue {
+                allFiles += collectSwiftFiles(in: sourceURL)
+            } else if sourceURL.pathExtension == "swift" {
+                allFiles.append(sourceURL)
+            }
+        }
+        let scannedFileCount = allFiles.count
 
-            let files: [URL] = isDir.boolValue
-                ? collectSwiftFiles(in: sourceURL)
-                : sourceURL.pathExtension == "swift" ? [sourceURL] : []
+        // ── 2. Load incremental cache snapshot ────────────────────────────────
+        let cacheURL = baseURL.appendingPathComponent(ScanCache.defaultRelativePath)
+        var cache: ScanCache = config.incremental
+            ? ((try? IncrementalScanCache.load(from: cacheURL)) ?? ScanCache())
+            : ScanCache()
+        let cacheSnapshot = cache  // value-type copy — safe for concurrent reads
 
-            scannedFileCount += files.count
+        // ── 3. Parallel scan ──────────────────────────────────────────────────
+        let parallelResults: [FileResult] = await withTaskGroup(
+            of: FileResult.self,
+            returning: [FileResult].self
+        ) { group in
+            let incrementalEnabled = config.incremental
 
-            for fileURL in files {
-                let cacheKey = fileURL.resolvingSymlinksInPath().path
+            for fileURL in allFiles {
+                group.addTask {
+                    let cacheKey = fileURL.resolvingSymlinksInPath().path
 
-                // Incremental: serve from cache if content unchanged
-                if config.incremental,
-                   let hash = try? IncrementalScanCache.contentHash(of: fileURL),
-                   cache.isValid(for: cacheKey, hash: hash),
-                   let entry = cache.entries[cacheKey] {
-                    entry.diagnostics.forEach { engine.emit($0) }
-                    if !entry.detectedStrings.isEmpty {
-                        fileResults.append((filePath: fileURL.path, strings: entry.detectedStrings))
+                    // Try cache hit first
+                    if incrementalEnabled,
+                       let hash = try? IncrementalScanCache.contentHash(of: fileURL),
+                       cacheSnapshot.isValid(for: cacheKey, hash: hash),
+                       let entry = cacheSnapshot.entries[cacheKey] {
+                        return .cached(
+                            cacheKey:          cacheKey,
+                            strings:           entry.detectedStrings,
+                            diagnostics:       entry.diagnostics,
+                            existingCount:     entry.existingLocalizationDetections.count
+                        )
                     }
-                    existingLocalizationCount += entry.existingLocalizationDetections.count
-                    cacheHits += 1
-                    continue
-                }
 
-                // Full scan
-                do {
-                    let source = try String(contentsOf: fileURL, encoding: .utf8)
-
-                    // Phase A: existing localization pre-pass
-                    var prePasResult = ExistingLocalizationDetector.Result.empty
-                    if let detector {
-                        prePasResult = detector.detect(source: source, filePath: fileURL.path)
-                        existingLocalizationCount += prePasResult.detections.count
+                    // Full scan
+                    guard let source = try? String(contentsOf: fileURL, encoding: .utf8) else {
+                        return .failed(message: "Cannot read \(fileURL.lastPathComponent)")
                     }
 
-                    let fileSuppressionIndex = SuppressionIndex(
-                        locations: prePasResult.suppressionLocations
-                    )
-
-                    // Phase B: string scanning (with suppression)
-                    let result = scanner.scan(
+                    let detectorResult = detector?.detect(source: source, filePath: fileURL.path)
+                        ?? .empty
+                    let suppressionIndex = SuppressionIndex(locations: detectorResult.suppressionLocations)
+                    let scanResult       = scanner.scan(
                         source: source,
                         filePath: fileURL.path,
-                        suppressionIndex: fileSuppressionIndex
+                        suppressionIndex: suppressionIndex
                     )
+                    let contentHash = IncrementalScanCache.sha256Hex(Data(source.utf8))
 
-                    result.diagnostics.forEach { engine.emit($0) }
-
-                    // Count suppression-related notes
-                    suppressedStringCount += result.diagnostics.filter {
-                        $0.severity == .note &&
-                        $0.message.contains("excluded localization function")
-                    }.count
-
-                    if !result.detectedStrings.isEmpty {
-                        fileResults.append((filePath: fileURL.path, strings: result.detectedStrings))
-                    }
-
-                    if config.incremental {
-                        let hash = (try? IncrementalScanCache.contentHash(of: fileURL)) ?? ""
-                        cache.entries[cacheKey] = ScanCacheEntry(
-                            contentHash:                    hash,
-                            swiftl10nVersion:               SwiftL10nCoreVersion.current,
-                            detectedStrings:                result.detectedStrings,
-                            diagnostics:                    result.diagnostics,
-                            existingLocalizationDetections: prePasResult.detections,
-                            suppressionLocations:           Array(prePasResult.suppressionLocations)
-                        )
-                        cacheModified = true
-                    }
-                } catch {
-                    engine.emit(.error, "Cannot read \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                    return .scanned(
+                        cacheKey:            cacheKey,
+                        filePath:            fileURL.path,
+                        strings:             scanResult.detectedStrings,
+                        diagnostics:         scanResult.diagnostics,
+                        existingDetections:  detectorResult.detections,
+                        suppressionLocs:     Array(detectorResult.suppressionLocations),
+                        contentHash:         contentHash
+                    )
                 }
+            }
+
+            var results: [FileResult] = []
+            for await r in group { results.append(r) }
+            // Sort by cache key for deterministic namespace ordering
+            return results.sorted { $0.sortKey < $1.sortKey }
+        }
+
+        // ── 4. Sequential aggregation ─────────────────────────────────────────
+        var fileResults: [(filePath: String, strings: [DetectedString])] = []
+        var existingLocalizationCount = 0
+        var suppressedStringCount     = 0
+        var cacheHits                 = 0
+        var newEntries: [(key: String, entry: ScanCacheEntry)] = []
+
+        for result in parallelResults {
+            switch result {
+            case let .cached(key, strings, diags, existingCount):
+                diags.forEach { engine.emit($0) }
+                if !strings.isEmpty { fileResults.append((filePath: key, strings: strings)) }
+                existingLocalizationCount += existingCount
+                cacheHits += 1
+
+            case let .scanned(key, filePath, strings, diags, existingDetections, suppressionLocs, hash):
+                diags.forEach { engine.emit($0) }
+                if !strings.isEmpty { fileResults.append((filePath: filePath, strings: strings)) }
+                existingLocalizationCount += existingDetections.count
+                suppressedStringCount += diags.filter {
+                    $0.severity == .note && $0.message.contains("excluded localization function")
+                }.count
+
+                if config.incremental {
+                    newEntries.append((key, ScanCacheEntry(
+                        contentHash:                    hash,
+                        swiftl10nVersion:               SwiftL10nCoreVersion.current,
+                        detectedStrings:                strings,
+                        diagnostics:                    diags,
+                        existingLocalizationDetections: existingDetections,
+                        suppressionLocations:           suppressionLocs
+                    )))
+                }
+
+            case let .failed(message):
+                engine.emit(.error, message)
             }
         }
 
-        // Persist cache if any entry was added or replaced
-        if config.incremental && cacheModified {
-            try? IncrementalScanCache.save(cache, to: cacheURL)
+        // ── 5. Cache update + stale entry removal ─────────────────────────────
+        var staleEntriesRemoved = 0
+        if config.incremental {
+            // Apply new entries
+            for (key, entry) in newEntries {
+                cache.entries[key] = entry
+            }
+            // Prune entries for files no longer in the scan set
+            let validKeys = Set(allFiles.map { $0.resolvingSymlinksInPath().path })
+            let staleKeys = Set(cache.entries.keys).subtracting(validKeys)
+            for key in staleKeys { cache.entries.removeValue(forKey: key) }
+            staleEntriesRemoved = staleKeys.count
+
+            if !newEntries.isEmpty || staleEntriesRemoved > 0 {
+                try? IncrementalScanCache.save(cache, to: cacheURL)
+            }
         }
 
-        let namespaces = NamespaceInferrer().infer(from: fileResults)
+        // ── 6. Namespace inference with collision detection ────────────────────
+        let inference = NamespaceInferrer().inferDetailed(from: fileResults, strategy: strategy)
+        inference.collisionDiagnostics.forEach { engine.emit($0) }
 
         return PipelineResult(
             scannedFiles:             scannedFileCount,
-            namespaces:               namespaces,
+            namespaces:               inference.namespaces,
             diagnostics:              engine.diagnostics,
             cacheHits:                cacheHits,
             existingLocalizationCount: existingLocalizationCount,
             suppressedStringCount:    suppressedStringCount,
-            migrationMode:            effectiveMode
+            migrationMode:            effectiveMode,
+            scanDuration:             Date().timeIntervalSince(startTime),
+            staleEntriesRemoved:      staleEntriesRemoved
         )
     }
 
@@ -209,7 +255,6 @@ public struct ScanPipeline: Sendable {
 
     private func isExcluded(_ url: URL) -> Bool {
         guard !config.exclude.isEmpty else { return false }
-        // Resolve symlinks on both sides so /var/folders and /private/var/folders compare equal
         let absolutePath = url.resolvingSymlinksInPath().path
         let basePath     = baseURL.resolvingSymlinksInPath().path
         let relativePath = absolutePath.hasPrefix(basePath + "/")
@@ -222,26 +267,48 @@ public struct ScanPipeline: Sendable {
     }
 
     /// Returns `true` if `relativePath` is excluded by `pattern`.
-    ///
-    /// - Non-glob patterns (no `*` or `?`) are treated as directory prefixes:
-    ///   `Sources/Generated` excludes any file inside that directory.
-    /// - Glob patterns (`*`, `**`, `?`) are matched with `GlobMatcher`.
     internal static func excludes(relativePath: String, pattern: String) -> Bool {
         let clean = pattern.hasSuffix("/") ? String(pattern.dropLast()) : pattern
 
         if !clean.contains("*"), !clean.contains("?") {
-            // Plain prefix / exact path
             return relativePath == clean || relativePath.hasPrefix("\(clean)/")
         }
 
         return GlobMatcher.matches(pattern: clean, path: relativePath)
     }
 
-    // MARK: - Helpers
-
     private func resolvedURL(for path: String) -> URL {
         path.hasPrefix("/")
             ? URL(fileURLWithPath: path)
             : baseURL.appendingPathComponent(path)
+    }
+}
+
+// MARK: - Private task result
+
+private enum FileResult: Sendable {
+    case cached(
+        cacheKey:      String,
+        strings:       [DetectedString],
+        diagnostics:   [Diagnostic],
+        existingCount: Int
+    )
+    case scanned(
+        cacheKey:           String,
+        filePath:           String,
+        strings:            [DetectedString],
+        diagnostics:        [Diagnostic],
+        existingDetections: [ExistingLocalizationDetector.Detection],
+        suppressionLocs:    [SourceLocation],
+        contentHash:        String
+    )
+    case failed(message: String)
+
+    var sortKey: String {
+        switch self {
+        case .cached(let k, _, _, _):       return k
+        case .scanned(let k, _, _, _, _, _, _): return k
+        case .failed:                        return ""
+        }
     }
 }
