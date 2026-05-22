@@ -9,13 +9,13 @@ import Foundation
 /// **SwiftUI:**
 /// ```swift
 /// .task {
-///     try? await SwiftL10n.scan(projectPath: "/path/to/Sources/YourApp")
+///     _ = try? await SwiftL10n.scan(projectPath: "/path/to/Sources/YourApp")
 /// }
 /// ```
 ///
 /// **UIKit:**
 /// ```swift
-/// Task { try? await SwiftL10n.scan(projectPath: "/path/to/YourApp") }
+/// Task { _ = try? await SwiftL10n.scan(projectPath: "/path/to/YourApp") }
 /// ```
 ///
 /// Both generated files are written to `projectPath/Generated/` by default.

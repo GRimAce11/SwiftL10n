@@ -110,7 +110,7 @@ struct ContentView: View {
             .task {
                 #if DEBUG
                 let projectPath = "/Users/you/Developer/YourApp/Sources/YourApp"
-                try? await SwiftL10n.scan(projectPath: projectPath)
+                _ = try? await SwiftL10n.scan(projectPath: projectPath)
                 #endif
             }
     }
@@ -368,7 +368,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         #if DEBUG
         let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
-        Task { try? await SwiftL10n.scan(projectPath: projectPath) }
+        Task { _ = try? await SwiftL10n.scan(projectPath: projectPath) }
         #endif
         return true
     }
@@ -387,7 +387,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         #if DEBUG
         let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
-        Task { try? await SwiftL10n.scan(projectPath: projectPath) }
+        Task { _ = try? await SwiftL10n.scan(projectPath: projectPath) }
         #endif
     }
 }
@@ -402,7 +402,7 @@ class RootViewController: UIViewController {
         super.viewDidLoad()
         #if DEBUG
         let projectPath = "/Users/you/Developer/YourApp/YourApp"  // ← change only this
-        Task { try? await SwiftL10n.scan(projectPath: projectPath) }
+        Task { _ = try? await SwiftL10n.scan(projectPath: projectPath) }
         #endif
     }
 }
