@@ -10,6 +10,66 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.0] — 2026-05-25
+
+### Added
+
+- **`StringCatalogParser`** — parses Xcode 15+ `.xcstrings` String Catalog files. `parse(url:)` reads a single catalog; `parseCatalogs(in:)` recursively finds and merges all `.xcstrings` files under a directory. `StringCatalog` model exposes `keys: Set<String>`, `entries: [String: Entry]` (with `comment`, `sourceValue`, `translationCount` per key), `languageCount`, `contains(key:)`, `merged(_:)`, and `StringCatalog.empty`. Plural variations are intentionally not modelled — key presence is what matters for validation.
+
+- **`StringCatalogValidator`** — cross-references detected source strings against the parsed catalog in two directions:
+  - **Missing** (`validate_missing: true`, default): a detected string value that is absent as a catalog key → `.warning` diagnostic with source location. These strings haven't been extracted to the catalog yet (or `swiftl10n scan` detected them before Xcode's build-time extraction ran).
+  - **Orphaned** (`validate_orphaned: false`, default): a catalog key with no matching detected source string → `.note` diagnostic. Indicates a dead/renamed translation. Off by default to avoid noise in codebases with manually-managed keys.
+  - Interpolated strings (`hasInterpolation: true`) are always excluded from catalog validation.
+
+- **`DuplicateLocalizationAnalyzer`** — two analysis modes:
+  - `analyzeCatalog(_:)` — finds catalog entries sharing the same source-language value; multiple keys with identical values are candidates for consolidation. Returns `[DuplicateKeyGroup]` (each group has `sharedValue` + `keys: [String]`). Emitted as `.suggestion` diagnostics (visible with `--verbose`, never fails CI).
+  - `analyzeNamespaces(_:)` — finds string values appearing in 2+ distinct namespaces. These are `i18n.Common` promotion candidates. Returns `[DuplicateDetectedGroup]` for programmatic use (not currently emitted as pipeline diagnostics — available via the public API).
+
+- **`AccessibilityAuditor`** — scans Swift source for `Image("name")` calls (non-system-name, non-decorative) that have no `.accessibilityLabel`, `.accessibilityHidden`, `.accessibilityElement`, `.accessibilityValue`, or `.accessibilityIdentifier` modifier anywhere in the SwiftUI modifier chain above the call site. Emits `.warning` diagnostics with source location. Opt-in via `accessibility_audit.enabled: true` — off by default to avoid noise in existing codebases. Chain traversal uses the SwiftSyntax parent-walk pattern: stops at `CodeBlockItemSyntax` boundaries to avoid false negatives from unrelated modifier chains.
+
+- **`string_catalog` config section** in `.swiftl10n.yml`:
+  ```yaml
+  string_catalog:
+    validate_missing: true   # warn for detected strings absent from .xcstrings
+    validate_orphaned: false  # note for catalog keys with no source usage
+  ```
+
+- **`accessibility_audit` config section** in `.swiftl10n.yml`:
+  ```yaml
+  accessibility_audit:
+    enabled: false  # opt-in Image("…") accessibility completeness check
+  ```
+
+- **New `PipelineResult` fields**:
+  - `missingCatalogKeys: Int` — count of detected strings absent from the catalog.
+  - `orphanedCatalogKeys: Int` — count of catalog keys with no source match.
+  - `duplicateCatalogGroups: Int` — count of catalog value groups with 2+ keys.
+  - `accessibilityWarnings: Int` — count of `Image` calls flagged for missing accessibility modifier.
+
+- **`JSONReporter`** — `scanned` object gains `missing_catalog_keys`, `orphaned_catalog_keys`, `duplicate_catalog_groups`, and `accessibility_warnings`.
+
+- **Console output** — new summary lines for each non-zero count:
+  ```
+  3 string(s) absent from .xcstrings catalog.
+  2 orphaned catalog key(s) found.
+  1 duplicate catalog value group(s) found.
+  4 Image literal(s) missing accessibility modifier.
+  ```
+
+- **43 new tests** across 4 new test files (total: 435):
+  - `StringCatalogParserTests` — key parsing, source value extraction, translation count, comment, language count, missing-localization key fallback, `contains`, merge, `findCatalogs`, `parseCatalogs`, empty catalog.
+  - `StringCatalogValidatorTests` — no-missing passthrough, missing key detection, location propagation, alphabetical sorting, orphaned key detection, interpolated string exclusion, empty catalog skip, cross-namespace deduplication.
+  - `DuplicateLocalizationTests` — catalog duplicate detection, unique-value no-flag, sorted output, empty catalog, nil-sourceValue fallback, cross-namespace namespace detection, single-namespace no-flag, interpolated exclusion, sorted namespace groups.
+  - `AccessibilityAuditTests` — unflagged (`.accessibilityLabel`, `.accessibilityHidden`, `.accessibilityElement`, modifier chain, `systemName:`, `decorative:`, non-string argument), flagged (bare literal, multiple literals, location accuracy), pipeline integration (default-off, enabled-reports-one).
+
+### Changed
+
+- Catalog validation and accessibility audit run as post-scan phases in `ScanPipeline.run()`. Catalog loading uses `try?` — a missing or malformed catalog is silently skipped rather than failing the scan.
+- `AccessibilityAuditor` runs inline in the parallel scan task group when `accessibility_audit.enabled: true`, sharing the already-loaded source text with `StringScanner`.
+- Version bumped to `1.0.0`; all 0.9.x incremental cache entries auto-invalidated.
+
+---
+
 ## [0.9.0] — 2026-05-22
 
 ### Added
@@ -393,7 +453,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.9.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.9.0...1.0.0
 [0.9.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.2...0.7.0

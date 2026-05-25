@@ -64,6 +64,9 @@ Seven principles govern every design decision:
 - **Fix suggestions** — every detected string exposes `suggestedPropertyName` (e.g. `deleteAccountButtonTitle`) in verbose output and JSON
 - **GitHub Actions annotations** — `--format github` emits `::warning file=…,line=…::` annotations consumed natively by GitHub CI
 - **`ImageResource` opt-in** — `use_image_resource: true` in `assets:` config generates `@available(iOS 16, …)` `ImageResource` accessors instead of `Image` functions
+- **`.xcstrings` catalog validation** — `StringCatalogParser` parses Xcode 15+ String Catalogs; `StringCatalogValidator` cross-references detected strings against the catalog: warns for strings absent from the catalog (`validate_missing: true`) and notes orphaned keys with no source usage (`validate_orphaned: false`)
+- **Duplicate localization analysis** — `DuplicateLocalizationAnalyzer` finds catalog entries sharing the same source-language value (consolidation opportunities) and string values appearing in 2+ namespaces (`i18n.Common` promotion candidates)
+- **Accessibility audit** — `AccessibilityAuditor` flags `Image("name")` calls missing `.accessibilityLabel` or `.accessibilityHidden` in the SwiftUI modifier chain; opt-in via `accessibility_audit.enabled: true`
 - **Extensible** — add custom detection rules by conforming to `DetectionRule`
 - **Swift 6 ready** — strict concurrency enforced, fully `Sendable`, zero data races
 
@@ -538,7 +541,11 @@ swiftl10n scan --format json > scan-results.json
     "existing_localized": 18,
     "migration_mode": "incremental",
     "scan_duration_seconds": 0.34,
-    "stale_entries_removed": 0
+    "stale_entries_removed": 0,
+    "missing_catalog_keys": 2,
+    "orphaned_catalog_keys": 0,
+    "duplicate_catalog_groups": 1,
+    "accessibility_warnings": 3
   },
   "diagnostics": [
     {
@@ -643,6 +650,20 @@ migration:
 #   auto:      use file strategy when all names are unique; directory-qualified on collision
 #              recommended for multi-module projects
 namespace_strategy: file
+
+# String Catalog (.xcstrings) validation.
+# SwiftL10n automatically finds .xcstrings files under the project root.
+# validate_missing: warn when a detected string has no key in the catalog (default: true)
+# validate_orphaned: note when a catalog key has no detected source usage (default: false)
+string_catalog:
+  validate_missing: true
+  validate_orphaned: false
+
+# Accessibility audit — flags Image("name") calls missing .accessibilityLabel
+# or .accessibilityHidden in the SwiftUI modifier chain.
+# Default: false — opt-in to avoid noise in existing codebases.
+accessibility_audit:
+  enabled: false
 ```
 
 **CLI flags always override config values.** For example, `swiftl10n scan --min-confidence 0.95` ignores `minimum_confidence` in the config for that run.
@@ -947,6 +968,12 @@ let result   = try await pipeline.run()
 print("\(result.totalStrings) strings in \(result.namespaces.count) namespace(s)")
 print("\(result.cacheHits) file(s) served from cache")
 print("Scanned in \(String(format: "%.2f", result.scanDuration))s · \(result.staleEntriesRemoved) stale cache entries removed")
+if result.missingCatalogKeys > 0 {
+    print("\(result.missingCatalogKeys) string(s) absent from .xcstrings catalog")
+}
+if result.accessibilityWarnings > 0 {
+    print("\(result.accessibilityWarnings) Image literal(s) missing accessibility modifier")
+}
 
 let code = CodeGenerator().generate(namespaces: result.namespaces)
 ```
@@ -1147,12 +1174,18 @@ SwiftL10n/
 │       ├── NamespaceInferrer/
 │       ├── CodeGen/
 │       │   └── CodeGenerator.swift        # Generates i18n.swift from detected strings
+│       ├── StringCatalog/
+│       │   ├── StringCatalogParser.swift  # Parses .xcstrings catalogs
+│       │   └── StringCatalogValidator.swift # Source ↔ catalog cross-reference
+│       ├── Analysis/
+│       │   ├── DuplicateLocalizationAnalyzer.swift  # Duplicate key/value detection
+│       │   └── AccessibilityAuditor.swift           # Image accessibility completeness
 │       ├── Common/
 │       │   └── CommonStringExtractor.swift
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 392 tests across 26 files
+    └── SwiftL10nCoreTests/            # 435 tests across 32 files
 ```
 
 ### Detection pipeline
@@ -1192,9 +1225,9 @@ The same principle applies to localization: SwiftL10n knows which string keys yo
 
 ## Current Status
 
-**v0.9.0 — Production stable.**
+**v1.0.0 — Production stable.**
 
-Two infrastructure domains are active, both now with incremental adoption support:
+Two infrastructure domains are active, both with incremental adoption support and resource consistency validation:
 
 | Domain | Status | Generated output |
 |---|---|---|
@@ -1223,7 +1256,10 @@ Two infrastructure domains are active, both now with incremental adoption suppor
 - **Parallel scanning** — `ScanPipeline.run()` is `async throws`; files scanned concurrently via `withTaskGroup`; results are deterministically sorted
 - **Cache hardening** — stale entries (deleted files) pruned on every incremental run; `PipelineResult.staleEntriesRemoved` and `PipelineResult.scanDuration` reported
 - **Namespace collision detection** — `NamespaceInferrer.inferDetailed(from:strategy:)` emits `.warning` diagnostics on name collision; `namespace_strategy: file | directory | auto` in config
-- 392 tests, 0 failures
+- **`.xcstrings` catalog validation** — `StringCatalogParser` + `StringCatalogValidator` cross-reference detected strings against Xcode 15+ String Catalogs; missing keys and orphaned translations reported as diagnostics
+- **Duplicate localization analysis** — `DuplicateLocalizationAnalyzer` surfaces catalog entries sharing the same value and strings appearing in 2+ namespaces
+- **Accessibility audit** — `AccessibilityAuditor` flags `Image("name")` calls missing `.accessibilityLabel` / `.accessibilityHidden`; opt-in via `accessibility_audit.enabled: true`
+- 435 tests, 0 failures
 
 ---
 
@@ -1241,7 +1277,7 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.7.0 | Incremental adoption infrastructure: `ExistingLocalizationDetector`, `SuppressionIndex`, migration modes (audit/incremental/strict), `merge_strategy: region`, `suggestion` diagnostic severity | Released |
 | v0.8.0 | Diagnostics ergonomics: `// swiftl10n:ignore` inline suppression, `ScoreExplanation` + `--verbose` breakdown, `suggestedPropertyName`, `--format github` Actions annotations, `ImageResource` opt-in for iOS 16+ | Released |
 | v0.9 | Scale and reliability: parallel file scanning (`withTaskGroup`), incremental cache hardening (stale-entry pruning), `PipelineResult.scanDuration`, namespace collision detection + `NamespaceStrategy` config | Released |
-| v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
+| v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Released |
 | v1.1 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
 
 Each phase is additive. APIs released in earlier phases are not removed in later ones without a major version bump.
@@ -1368,6 +1404,8 @@ swiftl10n --version
 swift test
 ```
 
+435 tests across 32 test files, 0 failures.
+
 | File | What it tests |
 |---|---|
 | `ScannerTests.swift` | End-to-end scanner behaviour for every rule |
@@ -1399,6 +1437,10 @@ swift test
 | `MergeStrategyTests.swift` | Marker replacement, manual code preservation, round-trip stability, config decoding |
 | `NamespaceCollisionTests.swift` | Collision detection diagnostics, `.file`/`.auto`/`.directory` strategy behaviour, config decoding, pipeline integration |
 | `ParallelScanTests.swift` | Concurrent correctness, deterministic namespace order, `scanDuration` > 0, `staleEntriesRemoved` after file deletion |
+| `StringCatalogParserTests.swift` | Key parsing, source value extraction, translation count, comment, language count, missing-localization key fallback, `findCatalogs`, `parseCatalogs`, merge |
+| `StringCatalogValidatorTests.swift` | Missing key detection, orphaned key detection, location propagation, interpolated string exclusion, empty catalog skip, cross-namespace deduplication |
+| `DuplicateLocalizationTests.swift` | Catalog duplicate groups, unique-value no-flag, sorted output, nil-sourceValue fallback, cross-namespace detection, interpolated exclusion |
+| `AccessibilityAuditTests.swift` | Unflagged (with modifier, chain, `systemName:`, `decorative:`), flagged (bare literal, multiple), location accuracy, pipeline integration (default-off, enabled) |
 
 ---
 
