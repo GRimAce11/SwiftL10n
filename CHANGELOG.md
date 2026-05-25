@@ -10,6 +10,37 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.9.0] — 2026-05-22
+
+### Added
+
+- **Parallel file scanning** — `ScanPipeline.run()` is now `async throws`. Files are scanned concurrently via `withTaskGroup`; each task runs `ExistingLocalizationDetector` + `StringScanner` independently. Results are sorted by resolved path for deterministic namespace order. Cache reads use a value-type snapshot (`Sendable`) safe for concurrent access; cache writes are sequential after task completion.
+
+- **`PipelineResult.scanDuration: TimeInterval`** — wall-clock time from `run()` invocation to result. Shown as `"0.34s"` in console output.
+
+- **Cache hardening — stale-entry pruning** — on every incremental run, cache entries whose source file no longer exists are removed. `PipelineResult.staleEntriesRemoved: Int` reports the count. Eliminates ghost cache entries that accumulated when files were renamed or deleted between runs.
+
+- **Namespace collision detection** — `NamespaceInferrer.inferDetailed(from:strategy:) -> InferenceResult` returns both the final `[Namespace]` and a `[Diagnostic]` of `.warning` entries, one per set of files that infer to the same namespace name. The existing `infer(from:)` entry point is unchanged — it calls `inferDetailed` with `.file` strategy and returns only the namespaces.
+
+- **`NamespaceStrategy` config enum** — three values configurable via `namespace_strategy:` in `.swiftl10n.yml`:
+  - `file` (default) — strip the SwiftUI/UIKit suffix from the file name. Pre-v0.9 behavior, zero breaking change.
+  - `directory` — always prefix with the immediate parent directory name (`Payment/SettingsView.swift` → `PaymentSettings`). Skips generic directory names (`Sources`, `Views`, `Screens`, etc.).
+  - `auto` — `file` when all names are unique; `directory`-qualified on collision. Recommended for multi-module projects.
+
+- **`JSONReporter`** — `scanned` object gains `scan_duration_seconds: Double` and `stale_entries_removed: Int`.
+
+- **21 new tests** across 2 new test files (total: 392):
+  - `NamespaceCollisionTests` — no-collision passthrough, collision warning diagnostic, `.file`/`.auto`/`.directory` strategy behavior, generic-directory skip, YAML config decoding, pipeline integration.
+  - `ParallelScanTests` — concurrent correctness (5-file scan), deterministic namespace order across two parallel runs, empty-directory zero-string result, `scanDuration > 0`, `staleEntriesRemoved` after file deletion with incremental cache.
+
+### Changed
+
+- `ScanPipeline.run()` is now `async throws` (previously `throws`). All callers must `await` the result. `ScanCommand` and `SwiftL10nCommand` are promoted to `AsyncParsableCommand`.
+- `ConfigTests`, `ScanPipelineTests`, `MigrationModeTests`, and `IncrementalScanCacheTests` updated to `async throws` to match the new `run()` signature.
+- Version bumped to `0.9.0`; all 0.8.x incremental cache entries auto-invalidated.
+
+---
+
 ## [0.8.0] — 2026-05-22
 
 ### Added

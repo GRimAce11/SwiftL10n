@@ -92,7 +92,7 @@ Xcode shows two products. **Only add `SwiftL10nCore`:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.8.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.9.0"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -527,7 +527,7 @@ swiftl10n scan --format json > scan-results.json
 ```json
 {
   "schema_version": "1",
-  "swiftl10n_version": "0.8.0",
+  "swiftl10n_version": "0.9.0",
   "scanned": {
     "files": 5,
     "strings": 42,
@@ -536,7 +536,9 @@ swiftl10n scan --format json > scan-results.json
     "errors": 0,
     "cache_hits": 4,
     "existing_localized": 18,
-    "migration_mode": "incremental"
+    "migration_mode": "incremental",
+    "scan_duration_seconds": 0.34,
+    "stale_entries_removed": 0
   },
   "diagnostics": [
     {
@@ -634,6 +636,13 @@ existing_localization:
 #   strict:      exit non-zero if any hardcoded string is found (CI enforcement)
 migration:
   mode: audit
+
+# Namespace identifier strategy.
+#   file:      (default) strip SwiftUI/UIKit suffix from the file name — pre-v0.9 behavior
+#   directory: always prefix with the immediate parent directory name
+#   auto:      use file strategy when all names are unique; directory-qualified on collision
+#              recommended for multi-module projects
+namespace_strategy: file
 ```
 
 **CLI flags always override config values.** For example, `swiftl10n scan --min-confidence 0.95` ignores `minimum_confidence` in the config for that run.
@@ -933,10 +942,11 @@ import SwiftL10nCore
 
 let config   = SwiftL10nConfig(sources: ["Sources"], minimumConfidence: 0.85)
 let pipeline = ScanPipeline(config: config, baseURL: projectRootURL)
-let result   = try pipeline.run()
+let result   = try await pipeline.run()
 
 print("\(result.totalStrings) strings in \(result.namespaces.count) namespace(s)")
 print("\(result.cacheHits) file(s) served from cache")
+print("Scanned in \(String(format: "%.2f", result.scanDuration))s · \(result.staleEntriesRemoved) stale cache entries removed")
 
 let code = CodeGenerator().generate(namespaces: result.namespaces)
 ```
@@ -1142,7 +1152,7 @@ SwiftL10n/
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 371 tests across 24 files
+    └── SwiftL10nCoreTests/            # 392 tests across 26 files
 ```
 
 ### Detection pipeline
@@ -1182,7 +1192,7 @@ The same principle applies to localization: SwiftL10n knows which string keys yo
 
 ## Current Status
 
-**v0.8.0 — Production stable.**
+**v0.9.0 — Production stable.**
 
 Two infrastructure domains are active, both now with incremental adoption support:
 
@@ -1210,7 +1220,10 @@ Two infrastructure domains are active, both now with incremental adoption suppor
 - **Confidence explanations** — `--verbose` score breakdown; `suggestedPropertyName` in verbose output and JSON
 - **GitHub Actions** — `--format github` emits native `::warning file=…::` annotations
 - **`ImageResource`** — `use_image_resource: true` generates `@available(iOS 16, …)` accessors
-- 371 tests, 0 failures
+- **Parallel scanning** — `ScanPipeline.run()` is `async throws`; files scanned concurrently via `withTaskGroup`; results are deterministically sorted
+- **Cache hardening** — stale entries (deleted files) pruned on every incremental run; `PipelineResult.staleEntriesRemoved` and `PipelineResult.scanDuration` reported
+- **Namespace collision detection** — `NamespaceInferrer.inferDetailed(from:strategy:)` emits `.warning` diagnostics on name collision; `namespace_strategy: file | directory | auto` in config
+- 392 tests, 0 failures
 
 ---
 
@@ -1227,7 +1240,7 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.6.2 | `SwiftL10n.scan()` unified entry point; `generateAssets()` free function; iOS / tvOS / watchOS compatibility fix | Released |
 | v0.7.0 | Incremental adoption infrastructure: `ExistingLocalizationDetector`, `SuppressionIndex`, migration modes (audit/incremental/strict), `merge_strategy: region`, `suggestion` diagnostic severity | Released |
 | v0.8.0 | Diagnostics ergonomics: `// swiftl10n:ignore` inline suppression, `ScoreExplanation` + `--verbose` breakdown, `suggestedPropertyName`, `--format github` Actions annotations, `ImageResource` opt-in for iOS 16+ | Released |
-| v0.9 | Scale and reliability: large-project benchmarking (50k+ LOC), parallel file scanning, incremental cache hardening, multi-module namespace collision handling | Planned |
+| v0.9 | Scale and reliability: parallel file scanning (`withTaskGroup`), incremental cache hardening (stale-entry pruning), `PipelineResult.scanDuration`, namespace collision detection + `NamespaceStrategy` config | Released |
 | v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Planned |
 | v1.1 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
 
@@ -1323,7 +1336,7 @@ These constraints are not scheduled features. They are permanent decisions that 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.8.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.9.0"),
 ],
 targets: [
     .target(
@@ -1384,6 +1397,8 @@ swift test
 | `SuppressionIndexTests.swift` | O(1) lookup, file/line/column precision, merging, integration with detector |
 | `MigrationModeTests.swift` | Config decoding, pipeline mode propagation, existing pattern recognition, backwards compatibility |
 | `MergeStrategyTests.swift` | Marker replacement, manual code preservation, round-trip stability, config decoding |
+| `NamespaceCollisionTests.swift` | Collision detection diagnostics, `.file`/`.auto`/`.directory` strategy behaviour, config decoding, pipeline integration |
+| `ParallelScanTests.swift` | Concurrent correctness, deterministic namespace order, `scanDuration` > 0, `staleEntriesRemoved` after file deletion |
 
 ---
 
