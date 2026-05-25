@@ -51,7 +51,7 @@ Requirements: macOS 14+, Swift 6.0+ (Xcode 16+).
 swift test
 ```
 
-The test suite has 130 tests split across focused unit-test files and fixture-based integration tests. All tests must pass before a PR can be merged.
+The test suite has 435 tests split across focused unit-test files and fixture-based integration tests. All tests must pass before a PR can be merged.
 
 To run a single test class:
 
@@ -68,6 +68,14 @@ swift test --filter FalsePositiveFilterTests
 2. Make your change with tests that cover the new behaviour.
 3. Run `swift test` — all 130+ tests must pass.
 4. Open a PR against `main` and fill in the pull request template.
+
+---
+
+## Adding catalog / accessibility / analysis features
+
+- **String catalog validation**: extend `StringCatalogValidator` or `StringCatalogParser` in `Sources/SwiftL10nCore/StringCatalog/`.
+- **Duplicate / source analysis**: extend `DuplicateLocalizationAnalyzer` in `Sources/SwiftL10nCore/Analysis/`.
+- **Accessibility audit rules**: extend `AccessibilityAuditor` (and its `AccessibilityVisitor`) in `Sources/SwiftL10nCore/Analysis/AccessibilityAuditor.swift` — add new node types to `visitPost` and update the accessibility modifier set as needed.
 
 ---
 

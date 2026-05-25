@@ -95,7 +95,7 @@ Xcode shows two products. **Only add `SwiftL10nCore`:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.9.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.0.0"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -530,7 +530,7 @@ swiftl10n scan --format json > scan-results.json
 ```json
 {
   "schema_version": "1",
-  "swiftl10n_version": "0.9.0",
+  "swiftl10n_version": "1.0.0",
   "scanned": {
     "files": 5,
     "strings": 42,
@@ -1372,7 +1372,7 @@ These constraints are not scheduled features. They are permanent decisions that 
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "0.9.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.0.0"),
 ],
 targets: [
     .target(

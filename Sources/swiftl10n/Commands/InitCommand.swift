@@ -77,6 +77,19 @@ struct InitCommand: ParsableCommand {
         #   strict:      exit non-zero if any hardcoded string is found (CI enforcement)
         # migration:
         #   mode: audit
+
+        # String Catalog (.xcstrings) validation.
+        # SwiftL10n automatically finds .xcstrings files under the project root.
+        # validate_missing: warn when a detected string has no key in the catalog (default: true)
+        # validate_orphaned: note when a catalog key has no detected source usage (default: false)
+        # string_catalog:
+        #   validate_missing: true
+        #   validate_orphaned: false
+
+        # Accessibility audit — flags Image("name") calls missing .accessibilityLabel
+        # or .accessibilityHidden in the SwiftUI modifier chain. Opt-in.
+        # accessibility_audit:
+        #   enabled: false
         """
 
         try yaml.write(to: configURL, atomically: true, encoding: .utf8)
