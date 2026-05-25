@@ -33,6 +33,18 @@ public struct ScanPipeline: Sendable {
         public let scanDuration: TimeInterval
         /// Cache entries removed because the corresponding source file no longer exists.
         public let staleEntriesRemoved: Int
+        /// Detected source strings absent from the `.xcstrings` catalog.
+        /// Zero when no catalog is found.
+        public let missingCatalogKeys: Int
+        /// Catalog keys with no matching detected source string value.
+        /// Zero when no catalog is found or `validateOrphaned` is disabled.
+        public let orphanedCatalogKeys: Int
+        /// Catalog key groups sharing the same source-language value.
+        /// Zero when no catalog is found.
+        public let duplicateCatalogGroups: Int
+        /// `Image("name")` calls flagged for missing accessibility modifiers.
+        /// Zero when `accessibility_audit.enabled` is `false`.
+        public let accessibilityWarnings: Int
 
         /// Sum of strings across all namespaces.
         public var totalStrings: Int { namespaces.reduce(0) { $0 + $1.strings.count } }
@@ -111,7 +123,8 @@ public struct ScanPipeline: Sendable {
             of: FileResult.self,
             returning: [FileResult].self
         ) { group in
-            let incrementalEnabled = config.incremental
+            let incrementalEnabled      = config.incremental
+            let accessibilityAuditEnabled = config.accessibilityAudit.enabled
 
             for fileURL in allFiles {
                 group.addTask {
@@ -145,11 +158,16 @@ public struct ScanPipeline: Sendable {
                     )
                     let contentHash = IncrementalScanCache.sha256Hex(Data(source.utf8))
 
+                    var allDiagnostics = scanResult.diagnostics
+                    if accessibilityAuditEnabled {
+                        allDiagnostics += AccessibilityAuditor().audit(source: source, filePath: fileURL.path)
+                    }
+
                     return .scanned(
                         cacheKey:            cacheKey,
                         filePath:            fileURL.path,
                         strings:             scanResult.detectedStrings,
-                        diagnostics:         scanResult.diagnostics,
+                        diagnostics:         allDiagnostics,
                         existingDetections:  detectorResult.detections,
                         suppressionLocs:     Array(detectorResult.suppressionLocations),
                         contentHash:         contentHash
@@ -224,6 +242,55 @@ public struct ScanPipeline: Sendable {
         let inference = NamespaceInferrer().inferDetailed(from: fileResults, strategy: strategy)
         inference.collisionDiagnostics.forEach { engine.emit($0) }
 
+        // ── 7. String catalog validation ──────────────────────────────────────
+        var missingCatalogKeys     = 0
+        var orphanedCatalogKeys    = 0
+        var duplicateCatalogGroups = 0
+
+        let catalog = (try? StringCatalogParser.parseCatalogs(in: baseURL)) ?? .empty
+        if !catalog.keys.isEmpty {
+            let catResult = StringCatalogValidator().validate(
+                namespaces: inference.namespaces,
+                against: catalog
+            )
+            missingCatalogKeys  = catResult.missingCount
+            orphanedCatalogKeys = catResult.orphanedCount
+
+            if config.stringCatalog.validateMissing {
+                for entry in catResult.missingFromCatalog {
+                    engine.emit(Diagnostic(
+                        severity: .warning,
+                        message: "Detected string \"\(entry.value)\" is absent from the string catalog",
+                        location: entry.locations.first
+                    ))
+                }
+            }
+            if config.stringCatalog.validateOrphaned {
+                for key in catResult.orphanedInCatalog {
+                    engine.emit(Diagnostic(
+                        severity: .note,
+                        message: "Catalog key \"\(key)\" has no detected source usage — may be orphaned"
+                    ))
+                }
+            }
+
+            let dupGroups = DuplicateLocalizationAnalyzer().analyzeCatalog(catalog)
+            duplicateCatalogGroups = dupGroups.count
+            for group in dupGroups {
+                engine.emit(Diagnostic(
+                    severity: .suggestion,
+                    message: "Duplicate catalog value \"\(group.sharedValue)\" used by "
+                           + "\(group.keys.count) keys: \(group.keys.joined(separator: ", "))"
+                ))
+            }
+        }
+
+        // ── 8. Accessibility warning count ────────────────────────────────────
+        let accessibilityWarnings = engine.diagnostics.filter {
+            $0.severity == .warning
+                && $0.message.hasPrefix("Image literal without accessibility modifier")
+        }.count
+
         return PipelineResult(
             scannedFiles:             scannedFileCount,
             namespaces:               inference.namespaces,
@@ -233,7 +300,11 @@ public struct ScanPipeline: Sendable {
             suppressedStringCount:    suppressedStringCount,
             migrationMode:            effectiveMode,
             scanDuration:             Date().timeIntervalSince(startTime),
-            staleEntriesRemoved:      staleEntriesRemoved
+            staleEntriesRemoved:      staleEntriesRemoved,
+            missingCatalogKeys:       missingCatalogKeys,
+            orphanedCatalogKeys:      orphanedCatalogKeys,
+            duplicateCatalogGroups:   duplicateCatalogGroups,
+            accessibilityWarnings:    accessibilityWarnings
         )
     }
 

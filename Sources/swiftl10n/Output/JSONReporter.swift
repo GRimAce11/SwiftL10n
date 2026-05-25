@@ -27,14 +27,22 @@ struct JSONReporter: Sendable {
             let migrationMode: String
             let scanDuration: Double
             let staleEntriesRemoved: Int
+            let missingCatalogKeys: Int
+            let orphanedCatalogKeys: Int
+            let duplicateCatalogGroups: Int
+            let accessibilityWarnings: Int
 
             enum CodingKeys: String, CodingKey {
                 case files, strings, namespaces, warnings, errors
-                case cacheHits           = "cache_hits"
-                case existingLocalized   = "existing_localized"
-                case migrationMode       = "migration_mode"
-                case scanDuration        = "scan_duration_seconds"
-                case staleEntriesRemoved = "stale_entries_removed"
+                case cacheHits             = "cache_hits"
+                case existingLocalized     = "existing_localized"
+                case migrationMode         = "migration_mode"
+                case scanDuration          = "scan_duration_seconds"
+                case staleEntriesRemoved   = "stale_entries_removed"
+                case missingCatalogKeys    = "missing_catalog_keys"
+                case orphanedCatalogKeys   = "orphaned_catalog_keys"
+                case duplicateCatalogGroups = "duplicate_catalog_groups"
+                case accessibilityWarnings = "accessibility_warnings"
             }
         }
 
@@ -90,16 +98,20 @@ struct JSONReporter: Sendable {
             schemaVersion: "1",
             swiftl10nVersion: Self.version,
             scanned: .init(
-                files:               result.scannedFiles,
-                strings:             result.totalStrings,
-                namespaces:          result.namespaces.count,
-                warnings:            result.warningCount,
-                errors:              result.errorCount,
-                cacheHits:           result.cacheHits,
-                existingLocalized:   result.existingLocalizationCount,
-                migrationMode:       result.migrationMode.rawValue,
-                scanDuration:        (result.scanDuration * 1000).rounded() / 1000,
-                staleEntriesRemoved: result.staleEntriesRemoved
+                files:                result.scannedFiles,
+                strings:              result.totalStrings,
+                namespaces:           result.namespaces.count,
+                warnings:             result.warningCount,
+                errors:               result.errorCount,
+                cacheHits:            result.cacheHits,
+                existingLocalized:    result.existingLocalizationCount,
+                migrationMode:        result.migrationMode.rawValue,
+                scanDuration:         (result.scanDuration * 1000).rounded() / 1000,
+                staleEntriesRemoved:  result.staleEntriesRemoved,
+                missingCatalogKeys:   result.missingCatalogKeys,
+                orphanedCatalogKeys:  result.orphanedCatalogKeys,
+                duplicateCatalogGroups: result.duplicateCatalogGroups,
+                accessibilityWarnings: result.accessibilityWarnings
             ),
             diagnostics: result.diagnostics
                 .filter { $0.severity != .note }

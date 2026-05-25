@@ -146,6 +146,18 @@ struct ScanCommand: AsyncParsableCommand {
                 if result.staleEntriesRemoved > 0 {
                     print("  \(result.staleEntriesRemoved) stale cache entry(s) removed.")
                 }
+                if result.missingCatalogKeys > 0 {
+                    print("  \(result.missingCatalogKeys) string(s) absent from .xcstrings catalog.")
+                }
+                if result.orphanedCatalogKeys > 0 {
+                    print("  \(result.orphanedCatalogKeys) orphaned catalog key(s) found.")
+                }
+                if result.duplicateCatalogGroups > 0 {
+                    print("  \(result.duplicateCatalogGroups) duplicate catalog value group(s) found.")
+                }
+                if result.accessibilityWarnings > 0 {
+                    print("  \(result.accessibilityWarnings) Image literal(s) missing accessibility modifier.")
+                }
                 for ns in result.namespaces.sorted(by: { $0.name < $1.name }) {
                     print("  \(ns.name): \(ns.strings.count) string(s)")
                 }

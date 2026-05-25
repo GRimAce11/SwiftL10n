@@ -27,6 +27,60 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
     /// Controls how namespace identifiers are derived from source file paths.
     /// Default: `file` — strip SwiftUI suffix from the file name (pre-v0.9 behavior).
     public let namespaceStrategy: NamespaceStrategy
+    /// String catalog (`.xcstrings`) validation settings.
+    public let stringCatalog: StringCatalogConfig
+    /// Accessibility label completeness audit settings.
+    public let accessibilityAudit: AccessibilityAuditConfig
+
+    // MARK: - Nested: StringCatalogConfig
+
+    /// Settings for `.xcstrings` String Catalog cross-reference validation.
+    public struct StringCatalogConfig: Sendable, Codable, Equatable {
+        /// Emit a `.warning` for each detected source string absent from the catalog.
+        /// Default: `true`.
+        public let validateMissing: Bool
+        /// Emit a `.note` for each catalog key with no detected source usage.
+        /// Default: `false` — can be noisy for catalogs with manually-managed keys.
+        public let validateOrphaned: Bool
+
+        public init(validateMissing: Bool = true, validateOrphaned: Bool = false) {
+            self.validateMissing  = validateMissing
+            self.validateOrphaned = validateOrphaned
+        }
+
+        public static let `default` = StringCatalogConfig()
+
+        enum CodingKeys: String, CodingKey {
+            case validateMissing  = "validate_missing"
+            case validateOrphaned = "validate_orphaned"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            validateMissing  = try c.decodeIfPresent(Bool.self, forKey: .validateMissing)  ?? true
+            validateOrphaned = try c.decodeIfPresent(Bool.self, forKey: .validateOrphaned) ?? false
+        }
+    }
+
+    // MARK: - Nested: AccessibilityAuditConfig
+
+    /// Settings for the accessibility label completeness audit.
+    public struct AccessibilityAuditConfig: Sendable, Codable, Equatable {
+        /// Audit `Image("name")` calls for missing `.accessibilityLabel` / `.accessibilityHidden`.
+        /// Default: `false` — opt-in to avoid noise in existing codebases.
+        public let enabled: Bool
+
+        public init(enabled: Bool = false) { self.enabled = enabled }
+
+        public static let `default` = AccessibilityAuditConfig()
+
+        enum CodingKeys: String, CodingKey { case enabled }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        }
+    }
 
     // MARK: - Nested: NamespaceStrategy
 
@@ -208,7 +262,9 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         assets: .init(),
         existingLocalization: .default,
         migration: .default,
-        namespaceStrategy: .file
+        namespaceStrategy: .file,
+        stringCatalog: .default,
+        accessibilityAudit: .default
     )
 
     // MARK: - Init
@@ -222,7 +278,9 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         assets: AssetsOutputConfig = .init(),
         existingLocalization: ExistingLocalizationConfig = .default,
         migration: MigrationConfig = .default,
-        namespaceStrategy: NamespaceStrategy = .file
+        namespaceStrategy: NamespaceStrategy = .file,
+        stringCatalog: StringCatalogConfig = .default,
+        accessibilityAudit: AccessibilityAuditConfig = .default
     ) {
         self.sources              = sources
         self.output               = output
@@ -233,6 +291,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         self.existingLocalization = existingLocalization
         self.migration            = migration
         self.namespaceStrategy    = namespaceStrategy
+        self.stringCatalog        = stringCatalog
+        self.accessibilityAudit   = accessibilityAudit
     }
 
     // MARK: - CodingKeys (snake_case YAML ↔ camelCase Swift)
@@ -247,6 +307,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         case existingLocalization = "existing_localization"
         case migration
         case namespaceStrategy    = "namespace_strategy"
+        case stringCatalog        = "string_catalog"
+        case accessibilityAudit   = "accessibility_audit"
     }
 
     // Provide defaults for every field so a minimal YAML (e.g. `sources: [Sources]`) is valid.
@@ -261,5 +323,7 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         existingLocalization = try c.decodeIfPresent(ExistingLocalizationConfig.self, forKey: .existingLocalization) ?? .default
         migration            = try c.decodeIfPresent(MigrationConfig.self,        forKey: .migration)            ?? .default
         namespaceStrategy    = try c.decodeIfPresent(NamespaceStrategy.self,      forKey: .namespaceStrategy)    ?? .file
+        stringCatalog        = try c.decodeIfPresent(StringCatalogConfig.self,    forKey: .stringCatalog)        ?? .default
+        accessibilityAudit   = try c.decodeIfPresent(AccessibilityAuditConfig.self, forKey: .accessibilityAudit) ?? .default
     }
 }

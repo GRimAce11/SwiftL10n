@@ -393,7 +393,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.8.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.2...0.7.0
 [0.6.2]: https://github.com/GRimAce11/SwiftL10n/compare/0.6.1...0.6.2
