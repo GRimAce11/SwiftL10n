@@ -1387,7 +1387,7 @@ SwiftL10n/
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 447 tests across 32 files
+    └── SwiftL10nCoreTests/            # 457 tests across 33 files
 ```
 
 ### Detection pipeline
@@ -1461,7 +1461,12 @@ Two infrastructure domains are active, both with incremental adoption support an
 - **`.xcstrings` catalog validation** — `StringCatalogParser` + `StringCatalogValidator` cross-reference detected strings against Xcode 15+ String Catalogs; missing keys and orphaned translations reported as diagnostics
 - **Duplicate localization analysis** — `DuplicateLocalizationAnalyzer` surfaces catalog entries sharing the same value and strings appearing in 2+ namespaces
 - **Accessibility audit** — `AccessibilityAuditor` flags `Image("name")` calls missing `.accessibilityLabel` / `.accessibilityHidden`; opt-in via `accessibility_audit.enabled: true`
-- 447 tests, 0 failures
+- **5 new SwiftUI rules** — `Section`, `Picker`, `Menu`, `DisclosureGroup`, `.help()` (20 rules total)
+- **`--dry-run` flag** — full pipeline run without writing any files; safe for CI preview
+- **Swift keyword escaping** — generated `i18n.swift` wraps reserved words in backticks so strings like `"var"` or `"return"` never produce code that fails to compile
+- **Config validation** — `output.enum_name` / `assets.enum_name` validated as valid Swift identifiers before any file is written; `minimum_confidence` range enforced at startup
+- **Diagnostic completeness** — file read errors, cache write failures, and malformed `.xcstrings` now emit actionable warning diagnostics instead of silently degrading
+- 457 tests, 0 failures
 
 ---
 
@@ -1480,7 +1485,7 @@ SwiftL10n follows a deliberate, phase-gated roadmap. Stability in one phase is a
 | v0.8.0 | Diagnostics ergonomics: `// swiftl10n:ignore` inline suppression, `ScoreExplanation` + `--verbose` breakdown, `suggestedPropertyName`, `--format github` Actions annotations, `ImageResource` opt-in for iOS 16+ | Released |
 | v0.9 | Scale and reliability: parallel file scanning (`withTaskGroup`), incremental cache hardening (stale-entry pruning), `PipelineResult.scanDuration`, namespace collision detection + `NamespaceStrategy` config | Released |
 | v1.0 | Resource consistency: `.xcstrings` key existence validation, duplicate localization analysis, accessibility label completeness diagnostics | Released |
-| v1.1 | Stability: public API contracts with semantic versioning guarantees, Swift Package Index integration, production-ready CI guides | Planned |
+| v1.1 | Detection breadth + reliability: 5 new SwiftUI rules (Section, Picker, Menu, DisclosureGroup, .help), `--dry-run` flag, shell completion, Swift keyword escaping in codegen, config validation, silent error surfacing | Released |
 
 Each phase is additive. APIs released in earlier phases are not removed in later ones without a major version bump.
 
@@ -1606,7 +1611,7 @@ swiftl10n --version
 swift test
 ```
 
-447 tests across 32 test files, 0 failures.
+457 tests across 33 test files, 0 failures.
 
 | File | What it tests |
 |---|---|

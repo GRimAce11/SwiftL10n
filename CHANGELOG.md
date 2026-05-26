@@ -32,7 +32,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - 6 new tests for the three production fixes (keyword escaping × 5, cache corruption × 1).
 - Rule and fixture tests updated to cover all 5 new detection contexts.
-- **453 tests total, 0 failures.**
+- **457 tests total, 0 failures.**
 
 ---
 

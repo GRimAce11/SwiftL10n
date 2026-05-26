@@ -51,7 +51,7 @@ Requirements: macOS 14+, Swift 6.0+ (Xcode 16+).
 swift test
 ```
 
-The test suite has 447 tests split across focused unit-test files and fixture-based integration tests. All tests must pass before a PR can be merged.
+The test suite has 457 tests split across focused unit-test files and fixture-based integration tests. All tests must pass before a PR can be merged.
 
 To run a single test class:
 
@@ -67,7 +67,7 @@ swift test --filter DetectionRuleTests
 
 1. Fork the repo and create a branch from `main`.
 2. Make your change with tests that cover the new behaviour.
-3. Run `swift test` — all 130+ tests must pass.
+3. Run `swift test` — all 457 tests must pass.
 4. Open a PR against `main` and fill in the pull request template.
 
 ---
