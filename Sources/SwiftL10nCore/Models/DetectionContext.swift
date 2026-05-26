@@ -32,6 +32,21 @@ public enum DetectionContext: Sendable, Hashable {
     /// First argument to `Toggle("label", isOn:)`.
     case toggle
 
+    /// First argument to `Section("header") { }`.
+    case section
+
+    /// First argument to `Picker("label", selection:) { }`.
+    case picker
+
+    /// First argument to `Menu("title") { }`.
+    case menu
+
+    /// First argument to `DisclosureGroup("header") { }`.
+    case disclosureGroup
+
+    /// Argument to `.help("description")`.
+    case helpText
+
     // MARK: UIKit
 
     /// `label.text = "…"` or `textView.text = "…"`.
@@ -73,9 +88,14 @@ extension DetectionContext {
         case .navigationTitle:                 return "navigationTitle"
         case .alert:                           return "alert"
         case .confirmationDialog:              return "confirmationDialog"
-        case .textField:                       return "TextField"
+        case .textField:                        return "TextField"
         case .accessibilityLabel:              return "accessibilityLabel"
         case .toggle:                          return "Toggle"
+        case .section:                         return "Section"
+        case .picker:                          return "Picker"
+        case .menu:                            return "Menu"
+        case .disclosureGroup:                 return "DisclosureGroup"
+        case .helpText:                        return "help"
         case .uiLabel:                         return "UILabel.text"
         case .uiButtonTitle:                   return "UIButton.setTitle"
         case .uiTextFieldPlaceholder:          return "UITextField.placeholder"
@@ -100,9 +120,14 @@ extension DetectionContext {
         case .navigationTitle:                 return "NavigationTitle"
         case .alert:                           return "AlertTitle"
         case .confirmationDialog:              return "DialogTitle"
-        case .textField:                       return "Placeholder"
+        case .textField:                        return "Placeholder"
         case .accessibilityLabel:              return "AccessibilityLabel"
         case .toggle:                          return "ToggleLabel"
+        case .section:                         return "SectionTitle"
+        case .picker:                          return "PickerLabel"
+        case .menu:                            return "MenuTitle"
+        case .disclosureGroup:                 return "SectionTitle"
+        case .helpText:                        return "HelpText"
         case .uiLabel:                         return "Label"
         case .uiButtonTitle:                   return "ButtonTitle"
         case .uiTextFieldPlaceholder:          return "Placeholder"

@@ -14,6 +14,11 @@ extension DetectionContext: Codable {
         case "textField":               self = .textField
         case "accessibilityLabel":      self = .accessibilityLabel
         case "toggle":                  self = .toggle
+        case "section":                 self = .section
+        case "picker":                  self = .picker
+        case "menu":                    self = .menu
+        case "disclosureGroup":         self = .disclosureGroup
+        case "helpText":                self = .helpText
         case "uiLabel":                 self = .uiLabel
         case "uiButtonTitle":           self = .uiButtonTitle
         case "uiTextFieldPlaceholder":  self = .uiTextFieldPlaceholder
@@ -40,6 +45,11 @@ extension DetectionContext: Codable {
         case .textField:              try c.encode("textField",              forKey: .type)
         case .accessibilityLabel:     try c.encode("accessibilityLabel",     forKey: .type)
         case .toggle:                 try c.encode("toggle",                 forKey: .type)
+        case .section:                try c.encode("section",                forKey: .type)
+        case .picker:                 try c.encode("picker",                 forKey: .type)
+        case .menu:                   try c.encode("menu",                   forKey: .type)
+        case .disclosureGroup:        try c.encode("disclosureGroup",        forKey: .type)
+        case .helpText:               try c.encode("helpText",               forKey: .type)
         case .uiLabel:                try c.encode("uiLabel",                forKey: .type)
         case .uiButtonTitle:          try c.encode("uiButtonTitle",          forKey: .type)
         case .uiTextFieldPlaceholder: try c.encode("uiTextFieldPlaceholder", forKey: .type)

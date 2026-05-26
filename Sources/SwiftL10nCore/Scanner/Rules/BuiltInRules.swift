@@ -150,6 +150,89 @@ public struct AccessibilityLabelRule: DetectionRule {
     }
 }
 
+// MARK: - Section("…") { }
+
+/// Detects `Section("header") { content }`.
+/// Only the string-literal form fires; `Section(header: { … }) {}` has a labeled argument and is skipped.
+public struct SectionRule: DetectionRule {
+    public let name = "SectionRule"
+    public let baseConfidence = 0.90
+    public let stringArgumentSelector = ArgumentSelector.firstUnlabeled
+
+    public init() {}
+
+    public func match(in node: FunctionCallExprSyntax) -> DetectionContext? {
+        guard isDirect(node, callee: "Section") else { return nil }
+        return .section
+    }
+}
+
+// MARK: - Picker("…", selection:) { }
+
+/// Detects `Picker("label", selection: $binding) { }`.
+/// The label is the first unlabeled argument; `selection:` is ignored.
+public struct PickerRule: DetectionRule {
+    public let name = "PickerRule"
+    public let baseConfidence = 0.92
+    public let stringArgumentSelector = ArgumentSelector.firstUnlabeled
+
+    public init() {}
+
+    public func match(in node: FunctionCallExprSyntax) -> DetectionContext? {
+        guard isDirect(node, callee: "Picker") else { return nil }
+        return .picker
+    }
+}
+
+// MARK: - Menu("…") { }
+
+/// Detects `Menu("title") { content }`.
+/// The `Menu { } label: { … }` form has no string argument and is not matched.
+public struct MenuRule: DetectionRule {
+    public let name = "MenuRule"
+    public let baseConfidence = 0.93
+    public let stringArgumentSelector = ArgumentSelector.firstUnlabeled
+
+    public init() {}
+
+    public func match(in node: FunctionCallExprSyntax) -> DetectionContext? {
+        guard isDirect(node, callee: "Menu") else { return nil }
+        return .menu
+    }
+}
+
+// MARK: - DisclosureGroup("…") { }
+
+/// Detects `DisclosureGroup("header") { content }`.
+public struct DisclosureGroupRule: DetectionRule {
+    public let name = "DisclosureGroupRule"
+    public let baseConfidence = 0.91
+    public let stringArgumentSelector = ArgumentSelector.firstUnlabeled
+
+    public init() {}
+
+    public func match(in node: FunctionCallExprSyntax) -> DetectionContext? {
+        guard isDirect(node, callee: "DisclosureGroup") else { return nil }
+        return .disclosureGroup
+    }
+}
+
+// MARK: - .help("…")
+
+/// Detects `.help("description")` — SwiftUI accessibility help text modifier.
+public struct HelpTextRule: DetectionRule {
+    public let name = "HelpTextRule"
+    public let baseConfidence = 0.88
+    public let stringArgumentSelector = ArgumentSelector.firstUnlabeled
+
+    public init() {}
+
+    public func match(in node: FunctionCallExprSyntax) -> DetectionContext? {
+        guard memberName(node) == "help" else { return nil }
+        return .helpText
+    }
+}
+
 // MARK: - Shared helpers (internal — used by BuiltInRules and UIKitRules)
 
 /// `true` when the call is `Identifier(…)` — a direct (non-member) call.

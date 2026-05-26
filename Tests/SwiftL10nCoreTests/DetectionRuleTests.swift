@@ -105,6 +105,74 @@ final class DetectionRuleTests: XCTestCase {
         XCTAssertEqual(AccessibilityLabelRule().baseConfidence, 0.90)
     }
 
+    // MARK: - SectionRule
+
+    func testSectionRuleMatchesSection() {
+        let node = parseCall(#"Section("Account") {}"#)
+        XCTAssertEqual(SectionRule().match(in: node), .section)
+    }
+
+    func testSectionRuleDoesNotMatchText() {
+        let node = parseCall(#"Text("Account")"#)
+        XCTAssertNil(SectionRule().match(in: node))
+    }
+
+    func testSectionRuleBaseConfidence() {
+        XCTAssertEqual(SectionRule().baseConfidence, 0.90)
+    }
+
+    // MARK: - PickerRule
+
+    func testPickerRuleMatchesPicker() {
+        let node = parseCall(#"Picker("Sort By", selection: $s) {}"#)
+        XCTAssertEqual(PickerRule().match(in: node), .picker)
+    }
+
+    func testPickerRuleDoesNotMatchText() {
+        let node = parseCall(#"Text("Sort By")"#)
+        XCTAssertNil(PickerRule().match(in: node))
+    }
+
+    // MARK: - MenuRule
+
+    func testMenuRuleMatchesMenu() {
+        let node = parseCall(#"Menu("Options") {}"#)
+        XCTAssertEqual(MenuRule().match(in: node), .menu)
+    }
+
+    func testMenuRuleDoesNotMatchButton() {
+        let node = parseCall(#"Button("Options") {}"#)
+        XCTAssertNil(MenuRule().match(in: node))
+    }
+
+    // MARK: - DisclosureGroupRule
+
+    func testDisclosureGroupRuleMatchesDisclosureGroup() {
+        let node = parseCall(#"DisclosureGroup("Advanced") {}"#)
+        XCTAssertEqual(DisclosureGroupRule().match(in: node), .disclosureGroup)
+    }
+
+    func testDisclosureGroupRuleDoesNotMatchSection() {
+        let node = parseCall(#"Section("Advanced") {}"#)
+        XCTAssertNil(DisclosureGroupRule().match(in: node))
+    }
+
+    // MARK: - HelpTextRule
+
+    func testHelpTextRuleMatchesHelp() {
+        let node = parseCall(#".help("Tap to delete")"#)
+        XCTAssertEqual(HelpTextRule().match(in: node), .helpText)
+    }
+
+    func testHelpTextRuleDoesNotMatchAccessibilityLabel() {
+        let node = parseCall(#".accessibilityLabel("Label")"#)
+        XCTAssertNil(HelpTextRule().match(in: node))
+    }
+
+    func testHelpTextRuleBaseConfidence() {
+        XCTAssertEqual(HelpTextRule().baseConfidence, 0.88)
+    }
+
     // MARK: - ArgumentSelector
 
     func testFirstUnlabeledSkipsVerbatim() {
@@ -119,15 +187,15 @@ final class DetectionRuleTests: XCTestCase {
     // MARK: - RuleEngine default
 
     func testDefaultEngineContainsAllBuiltInRules() {
-        // 9 SwiftUI + 6 UIKit function-call rules
-        XCTAssertEqual(RuleEngine.default.rules.count, 15)
+        // 14 SwiftUI + 6 UIKit function-call rules
+        XCTAssertEqual(RuleEngine.default.rules.count, 20)
         // 1 UIKit property-assignment rule
         XCTAssertEqual(RuleEngine.default.assignmentRules.count, 1)
     }
 
     func testDefaultEngineRuleNames() {
         let names = Set(RuleEngine.default.rules.map(\.name))
-        // SwiftUI
+        // SwiftUI — original 9
         XCTAssertTrue(names.contains("TextViewRule"))
         XCTAssertTrue(names.contains("ButtonRule"))
         XCTAssertTrue(names.contains("LabelViewRule"))
@@ -137,6 +205,12 @@ final class DetectionRuleTests: XCTestCase {
         XCTAssertTrue(names.contains("ConfirmationDialogRule"))
         XCTAssertTrue(names.contains("TextFieldRule"))
         XCTAssertTrue(names.contains("AccessibilityLabelRule"))
+        // SwiftUI — v1.1 additions
+        XCTAssertTrue(names.contains("SectionRule"))
+        XCTAssertTrue(names.contains("PickerRule"))
+        XCTAssertTrue(names.contains("MenuRule"))
+        XCTAssertTrue(names.contains("DisclosureGroupRule"))
+        XCTAssertTrue(names.contains("HelpTextRule"))
         // UIKit
         XCTAssertTrue(names.contains("UIButtonSetTitleRule"))
         XCTAssertTrue(names.contains("UIAlertControllerTitleRule"))

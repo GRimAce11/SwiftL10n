@@ -64,6 +64,11 @@ final class FixtureTests: XCTestCase {
         XCTAssertTrue(contexts.contains(.navigationTitle))
         XCTAssertTrue(contexts.contains(.alert))
         XCTAssertTrue(contexts.contains(.confirmationDialog))
+        XCTAssertTrue(contexts.contains(.section))
+        XCTAssertTrue(contexts.contains(.picker))
+        XCTAssertTrue(contexts.contains(.menu))
+        XCTAssertTrue(contexts.contains(.disclosureGroup))
+        XCTAssertTrue(contexts.contains(.helpText))
     }
 
     func testAllCallSitesSFSymbolsAreExcluded() {

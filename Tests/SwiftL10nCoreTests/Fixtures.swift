@@ -96,16 +96,32 @@ enum TestFixtures {
         @State var showAlert = false
         @State var showDialog = false
         @State var searchText = ""
+        @State var sortOrder = 0
+        @State var showAdvanced = false
 
         var body: some View {
-            VStack {
-                Text("Title Text")
-                Button("Tap Me") {}
-                Label("Settings", systemImage: "gear")
-                Toggle("Enable Notifications", isOn: $showAlert)
-                TextField("Search…", text: $searchText)
-                Text("Subtitle")
-                    .accessibilityLabel("Subtitle accessible description")
+            Form {
+                Section("General") {
+                    Text("Title Text")
+                    Button("Tap Me") {}
+                    Label("Settings", systemImage: "gear")
+                    Toggle("Enable Notifications", isOn: $showAlert)
+                    TextField("Search…", text: $searchText)
+                    Text("Subtitle")
+                        .accessibilityLabel("Subtitle accessible description")
+                    Picker("Sort By", selection: $sortOrder) {
+                        Text("Newest").tag(0)
+                        Text("Oldest").tag(1)
+                    }
+                    Menu("More Options") {
+                        Button("Export") {}
+                        Button("Share") {}
+                    }
+                    DisclosureGroup("Advanced Settings", isExpanded: $showAdvanced) {
+                        Toggle("Beta Features", isOn: $showAlert)
+                            .help("Enable experimental features")
+                    }
+                }
             }
             .navigationTitle("All Calls")
             .alert("Alert Title", isPresented: $showAlert) {

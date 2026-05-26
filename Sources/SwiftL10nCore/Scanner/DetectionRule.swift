@@ -94,6 +94,11 @@ public struct RuleEngine: Sendable {
             ConfirmationDialogRule(),
             TextFieldRule(),
             AccessibilityLabelRule(),
+            SectionRule(),
+            PickerRule(),
+            MenuRule(),
+            DisclosureGroupRule(),
+            HelpTextRule(),
             // UIKit function calls
             UIButtonSetTitleRule(),
             UIAlertControllerTitleRule(),
