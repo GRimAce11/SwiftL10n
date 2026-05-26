@@ -248,6 +248,36 @@ final class ConfigLoaderTests: XCTestCase {
             }
         }
     }
+
+    func testValidationRejectsInvalidEnumName() {
+        let config = SwiftL10nConfig(output: .init(enumName: "123Invalid"))
+        XCTAssertThrowsError(try ConfigLoaderValidate.validate(config, relativeTo: tempDir)) { error in
+            guard case ConfigError.validation = error else {
+                XCTFail("Expected ConfigError.validation for invalid enum name")
+                return
+            }
+        }
+    }
+
+    func testValidationRejectsEnumNameWithHyphen() {
+        let config = SwiftL10nConfig(output: .init(enumName: "my-enum"))
+        XCTAssertThrowsError(try ConfigLoaderValidate.validate(config, relativeTo: tempDir)) { error in
+            guard case ConfigError.validation = error else {
+                XCTFail("Expected ConfigError.validation for hyphenated enum name")
+                return
+            }
+        }
+    }
+
+    func testValidationAcceptsValidEnumName() {
+        let config = SwiftL10nConfig(sources: [tempDir.path], output: .init(enumName: "L10n"))
+        XCTAssertNoThrow(try ConfigLoaderValidate.validate(config, relativeTo: tempDir))
+    }
+
+    func testValidationAcceptsUnderscoreLeadingEnumName() {
+        let config = SwiftL10nConfig(sources: [tempDir.path], output: .init(enumName: "_L10n"))
+        XCTAssertNoThrow(try ConfigLoaderValidate.validate(config, relativeTo: tempDir))
+    }
 }
 
 // MARK: - Test-only shims
@@ -293,6 +323,12 @@ private enum ConfigLoaderValidate {
         guard config.minimumConfidence >= 0.0, config.minimumConfidence <= 1.0 else {
             throw ConfigError.validation("minimum_confidence out of range: \(config.minimumConfidence)")
         }
+        guard isValidIdentifier(config.output.enumName) else {
+            throw ConfigError.validation("output.enum_name '\(config.output.enumName)' is not a valid Swift identifier")
+        }
+        guard isValidIdentifier(config.assets.enumName) else {
+            throw ConfigError.validation("assets.enum_name '\(config.assets.enumName)' is not a valid Swift identifier")
+        }
         for source in config.sources {
             let resolved = source.hasPrefix("/")
                 ? URL(fileURLWithPath: source)
@@ -300,6 +336,15 @@ private enum ConfigLoaderValidate {
             guard FileManager.default.fileExists(atPath: resolved.path) else {
                 throw ConfigError.validation("Source path does not exist: \(source)")
             }
+        }
+    }
+
+    static func isValidIdentifier(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        let first = name.unicodeScalars.first!
+        guard CharacterSet.letters.union(CharacterSet(charactersIn: "_")).contains(first) else { return false }
+        return name.unicodeScalars.dropFirst().allSatisfy {
+            CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_")).contains($0)
         }
     }
 }

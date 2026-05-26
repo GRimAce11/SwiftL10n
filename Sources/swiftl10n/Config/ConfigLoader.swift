@@ -74,6 +74,20 @@ public struct ConfigLoader: Sendable {
             )
         }
 
+        let enumName = config.output.enumName
+        guard isValidIdentifier(enumName) else {
+            throw ConfigError.validation(
+                "output.enum_name '\(enumName)' is not a valid Swift identifier"
+            )
+        }
+
+        let assetsEnumName = config.assets.enumName
+        guard isValidIdentifier(assetsEnumName) else {
+            throw ConfigError.validation(
+                "assets.enum_name '\(assetsEnumName)' is not a valid Swift identifier"
+            )
+        }
+
         for source in config.sources {
             let resolved = source.hasPrefix("/")
                 ? URL(fileURLWithPath: source)
@@ -81,6 +95,15 @@ public struct ConfigLoader: Sendable {
             guard FileManager.default.fileExists(atPath: resolved.path) else {
                 throw ConfigError.validation("Source path does not exist: \(source)")
             }
+        }
+    }
+
+    private static func isValidIdentifier(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        let first = name.unicodeScalars.first!
+        guard CharacterSet.letters.union(CharacterSet(charactersIn: "_")).contains(first) else { return false }
+        return name.unicodeScalars.dropFirst().allSatisfy {
+            CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_")).contains($0)
         }
     }
 }

@@ -152,8 +152,11 @@ public struct ScanPipeline: Sendable {
                     }
 
                     // Full scan
-                    guard let source = try? String(contentsOf: fileURL, encoding: .utf8) else {
-                        return .failed(message: "Cannot read \(fileURL.lastPathComponent)")
+                    let source: String
+                    do {
+                        source = try String(contentsOf: fileURL, encoding: .utf8)
+                    } catch {
+                        return .failed(message: "Cannot read \(fileURL.lastPathComponent): \(error.localizedDescription)")
                     }
 
                     let detectorResult = detector?.detect(source: source, filePath: fileURL.path)
@@ -253,7 +256,11 @@ public struct ScanPipeline: Sendable {
             staleEntriesRemoved = staleKeys.count
 
             if !newEntries.isEmpty || staleEntriesRemoved > 0 {
-                try? IncrementalScanCache.save(cache, to: cacheURL)
+                do {
+                    try IncrementalScanCache.save(cache, to: cacheURL)
+                } catch {
+                    engine.emit(.warning, "Cache write failed (\(error.localizedDescription)) — next run will not benefit from caching.")
+                }
             }
         }
 
@@ -266,7 +273,13 @@ public struct ScanPipeline: Sendable {
         var orphanedCatalogKeys    = 0
         var duplicateCatalogGroups = 0
 
-        let catalog = (try? StringCatalogParser.parseCatalogs(in: baseURL)) ?? .empty
+        let catalog: StringCatalog
+        do {
+            catalog = try StringCatalogParser.parseCatalogs(in: baseURL)
+        } catch {
+            catalog = .empty
+            engine.emit(.warning, "String catalog unreadable (\(error.localizedDescription)) — catalog validation skipped.")
+        }
         if !catalog.keys.isEmpty {
             let catResult = StringCatalogValidator().validate(
                 namespaces: inference.namespaces,

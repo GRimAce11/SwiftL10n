@@ -135,7 +135,6 @@ public struct FalsePositiveFilter: Sendable {
     private let knownLowercaseProductNames: Set<String> = [
         "iPhone", "iPad", "iPod", "iCloud", "iMessage", "iTunes", "iPhoto",
         "macOS", "iOS", "watchOS", "tvOS", "visionOS",
-        "AirPods", "AirDrop", "AirPlay", "FaceTime",
         "eBook", "eSIM",
     ]
 }
