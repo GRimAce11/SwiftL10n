@@ -10,6 +10,7 @@ final class ScanViewModel {
     var results: [DetectedString] = []
     var existingDetections: [ExistingLocalizationDetector.Detection] = []
     var diagnostics: [Diagnostic] = []
+    var accessibilityDiagnostics: [Diagnostic] = []
     var isScanning = false
     var selectedString: DetectedString?
     var minConfidence: Double = 0.0
@@ -21,6 +22,7 @@ final class ScanViewModel {
         results = []
         existingDetections = []
         diagnostics = []
+        accessibilityDiagnostics = []
 
         let source = sourceCode
         let threshold = minConfidence
@@ -29,11 +31,13 @@ final class ScanViewModel {
         let detector = ExistingLocalizationDetector(
             config: .init(patterns: fixture == .partial ? ["L10n.", "i18n."] : [])
         )
+        let auditor = AccessibilityAuditor()
 
-        let (scanResult, detectorResult) = await Task.detached(priority: .userInitiated) {
+        let (scanResult, detectorResult, auditResult) = await Task.detached(priority: .userInitiated) {
             let sr = scanner.scan(source: source, filePath: "Demo.swift")
             let dr = detector.detect(source: source, filePath: "Demo.swift")
-            return (sr, dr)
+            let ar = auditor.audit(source: source, filePath: "Demo.swift")
+            return (sr, dr, ar)
         }.value
 
         results = scanResult.detectedStrings
@@ -41,6 +45,7 @@ final class ScanViewModel {
             .sorted { $0.confidence > $1.confidence }
         existingDetections = detectorResult.detections
         diagnostics = scanResult.diagnostics
+        accessibilityDiagnostics = auditResult
         isScanning = false
     }
 
@@ -49,6 +54,7 @@ final class ScanViewModel {
     var interpolatedCount: Int { results.filter(\.hasInterpolation).count }
     var warningCount: Int { diagnostics.filter { $0.severity == .warning }.count }
     var recognizedCount: Int { existingDetections.count }
+    var accessibilityWarningCount: Int { accessibilityDiagnostics.filter { $0.severity == .warning }.count }
 
     var namespaces: [SwiftL10nCore.Namespace] {
         NamespaceInferrer().infer(from: [("Demo.swift", results)])
@@ -62,23 +68,26 @@ final class ScanViewModel {
 // MARK: - Demo fixture
 
 enum DemoFixture: Int, CaseIterable {
-    case swiftUI = 0
-    case uiKit   = 1
-    case partial = 2
+    case swiftUI      = 0
+    case uiKit        = 1
+    case partial      = 2
+    case accessibility = 3
 
     var label: String {
         switch self {
-        case .swiftUI: "SwiftUI"
-        case .uiKit:   "UIKit"
-        case .partial: "Partial"
+        case .swiftUI:       "SwiftUI"
+        case .uiKit:         "UIKit"
+        case .partial:       "Partial"
+        case .accessibility: "A11y"
         }
     }
 
     var source: String {
         switch self {
-        case .swiftUI: Self.swiftUISource
-        case .uiKit:   Self.uiKitSource
-        case .partial: Self.partialSource
+        case .swiftUI:       Self.swiftUISource
+        case .uiKit:         Self.uiKitSource
+        case .partial:       Self.partialSource
+        case .accessibility: Self.accessibilitySource
         }
     }
 
@@ -157,6 +166,62 @@ enum DemoFixture: Int, CaseIterable {
         override func viewDidLoad() {
             super.viewDidLoad()
             navigationItem.title = "Home"
+        }
+    }
+    """
+
+    /// Demonstrates AccessibilityAuditor: images with and without accessibility
+    /// modifiers. The A11y fixture shows 3 warnings (bare Image literals) and
+    /// 4 passes (accessibilityLabel, accessibilityHidden, systemName:, decorative:).
+    static let accessibilitySource = """
+    import SwiftUI
+
+    struct ProfileHeaderView: View {
+        var body: some View {
+            VStack(spacing: 16) {
+                // ✓ has .accessibilityLabel — passes
+                Image("profile-photo")
+                    .resizable()
+                    .frame(width: 80, height: 80)
+                    .clipShape(Circle())
+                    .accessibilityLabel("Profile photo")
+
+                // ✓ SF Symbol — excluded by design
+                Image(systemName: "person.fill")
+                    .foregroundStyle(.secondary)
+
+                // ✓ decorative: label — excluded by design
+                Image(decorative: "texture-background")
+                    .resizable()
+                    .ignoresSafeArea()
+
+                // ⚠ missing accessibility modifier
+                Image("achievement-badge")
+                    .frame(width: 40, height: 40)
+
+                // ⚠ missing accessibility modifier
+                Image("promo-banner")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            }
+        }
+    }
+
+    struct ArticleFeedView: View {
+        var body: some View {
+            List {
+                // ✓ .accessibilityHidden — passes
+                Image("divider-line")
+                    .resizable()
+                    .frame(height: 1)
+                    .accessibilityHidden(true)
+
+                // ⚠ missing accessibility modifier
+                Image("featured-article-hero")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 180)
+            }
         }
     }
     """

@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SPM compatible](https://img.shields.io/badge/SwiftPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 
-A fast, accurate SwiftUI and UIKit string scanner that automates the first step of every localization workflow — finding the strings.
+Source-aware infrastructure tooling for Swift codebases: detects hardcoded strings, validates asset references and `.xcstrings` catalogs, audits accessibility completeness, and generates type-safe `i18n.swift` / `Assets.swift` scaffolds.
 
 ---
 
@@ -42,7 +42,7 @@ Seven principles govern every design decision:
 
 ## Features
 
-- **15 detection rules** out of the box — SwiftUI and UIKit detected automatically, no configuration needed
+- **20 detection rules** out of the box — SwiftUI and UIKit detected automatically, no configuration needed
 - **Smart false-positive prevention** — SF Symbol names, URLs, file paths, reverse-DNS keys, `snake_case`, `camelCase`, and `SCREAMING_CASE` identifiers are all filtered out
 - **Confidence scoring** — every result carries a deterministic `0.0–1.0` score adjusted for string content and enclosing SwiftUI context
 - **Interpolation awareness** — `Text("Hello \(name)!")` is detected, templated as `"Hello {…}!"`, and flagged with a warning; it is skipped during code generation
@@ -504,6 +504,7 @@ swiftl10n scan Sources/
 | `--fail-on warnings` | Exit non-zero on any warning (default: errors only) |
 | `--fail-on never` | Always exit 0 (useful for advisory-only CI steps) |
 | `--migration-mode audit\|incremental\|strict` | Override migration mode for this run (overrides config) |
+| `--dry-run` | Run the full pipeline and print what would be written, but skip all file writes |
 
 **Examples:**
 
@@ -516,6 +517,9 @@ swiftl10n scan --fail-on warnings
 
 # CI: strict mode — fail if any hardcoded string exists
 swiftl10n scan --migration-mode strict
+
+# Dry run — preview what would be written without touching any files
+swiftl10n scan --dry-run
 
 # GitHub Actions annotations
 swiftl10n scan --format github
@@ -729,6 +733,51 @@ Use with `--migration-mode strict` to fail the PR build when any new hardcoded s
 
 ---
 
+### Xcode Build Phase
+
+Run `swiftl10n scan` automatically on every Xcode build:
+
+1. Select your target → **Build Phases** → **+** → **New Run Script Phase**
+2. Drag the new phase **above Compile Sources**
+3. Paste the script:
+
+```bash
+if which swiftl10n > /dev/null; then
+    swiftl10n scan --format github
+fi
+```
+
+Using `--format github` means detected strings appear inline in the Xcode issue navigator as warnings. The `if which` guard keeps the build clean for team members who haven't installed `swiftl10n` yet.
+
+For CI enforcement, use `--migration-mode strict` and the build will fail if any hardcoded string is introduced:
+
+```bash
+if which swiftl10n > /dev/null; then
+    swiftl10n scan --format github --migration-mode strict
+fi
+```
+
+> **Performance:** Enable `incremental: true` in `.swiftl10n.yml` so only changed files are re-scanned on each build. Unchanged files are served from the SHA-256 cache instantly.
+
+---
+
+### Shell Completion
+
+`swiftl10n` ships built-in tab completion for bash, zsh, and fish via ArgumentParser. Generate and install the completion script once:
+
+```bash
+# zsh
+swiftl10n --generate-completion-script zsh > ~/.zsh/completions/_swiftl10n
+# bash
+swiftl10n --generate-completion-script bash > /usr/local/etc/bash_completion.d/swiftl10n
+# fish
+swiftl10n --generate-completion-script fish > ~/.config/fish/completions/swiftl10n.fish
+```
+
+After installing, subcommands, flags, and file arguments all tab-complete. The `scan` path argument completes `.swift` files; `--config` completes `.yml`/`.yaml` files.
+
+---
+
 ### Verbose output
 
 `--verbose` now shows the confidence score breakdown and the suggested generated property name for each detected string:
@@ -897,6 +946,87 @@ Remove the old pattern from `existing_localization.patterns`. New call sites usi
 
 ---
 
+## String Catalog Validation
+
+SwiftL10n cross-references your Swift source against Xcode 15+ String Catalogs (`.xcstrings`) in both directions: it warns when source uses a string absent from the catalog, and notes catalog keys that no source reference was found for.
+
+Both checks run automatically during `swiftl10n scan` when a `.xcstrings` file is found anywhere under the project root. No configuration is needed to get started.
+
+### Configure validation behaviour
+
+```yaml
+string_catalog:
+  validate_missing: true    # warn when a detected string has no key in the catalog
+  validate_orphaned: false  # note when a catalog key has no detected source usage
+```
+
+`validate_missing: true` (default) is the most actionable setting: it tells you exactly which strings your code uses that are not yet in the catalog.
+
+`validate_orphaned: false` (default) keeps the report quiet during development when keys legitimately outnumber active source references. Set it to `true` to audit a mature catalog for dead keys before shipping.
+
+### What the diagnostics look like
+
+```
+── String Catalog (Localizable.xcstrings · 42 key(s))
+   2 missing from catalog:
+   ⚠ "Delete Account" — SettingsView.swift:22 [not in catalog]
+   ⚠ "Reset Preferences" — SettingsView.swift:31 [not in catalog]
+   1 orphaned in catalog:
+   ○ "OldFeatureTitle" — key exists in catalog but no source usage found
+```
+
+**Missing** means your code has a string that has no localization key in the catalog — it will not be translated when you add a second language. Add the key to the catalog (Xcode auto-discovers `String(localized:)` calls; for hardcoded strings, use the generated `i18n.swift` API).
+
+**Orphaned** means the catalog contains a key the scanner found no source reference for. These are safe to remove once you confirm they are not used by other means (storyboards, server-driven strings, ObjC code).
+
+### Notes
+
+- Interpolated strings (`"Hello {…}!"`) are excluded from missing-key validation — the template value is not a valid catalog key.
+- Validation is skipped entirely if no `.xcstrings` file is found, or if the found catalog is empty.
+- Multiple catalogs under the project root are merged before validation.
+
+---
+
+## Accessibility Audit
+
+SwiftL10n flags `Image("name")` calls in SwiftUI source that are missing an accessibility modifier in their modifier chain.
+
+### Enable the audit
+
+```yaml
+accessibility_audit:
+  enabled: true   # default: false — opt in when ready
+```
+
+The audit is off by default to avoid noise in codebases not yet using accessibility modifiers. Enable it per-project once your team has adopted the practice.
+
+### What gets flagged
+
+```
+⚠ Image literal without accessibility modifier: Image("achievement-badge") — ProfileView.swift:24
+⚠ Image literal without accessibility modifier: Image("promo-banner") — ProfileView.swift:29
+```
+
+Any `Image("name")` call without one of the following modifiers in the same modifier chain is reported as a `.warning`:
+
+- `.accessibilityLabel(_:)`
+- `.accessibilityHidden(_:)`
+- `.accessibilityElement(children:)`
+- `.accessibilityValue(_:)`
+- `.accessibilityIdentifier(_:)`
+
+### What is intentionally excluded
+
+| Call site | Reason |
+|---|---|
+| `Image(systemName: "…")` | SF Symbol — accessibility defaults are well-defined |
+| `Image(decorative: "…")` | Explicitly marked non-semantic |
+| `Image("…").accessibilityLabel(…)` | Has modifier — passes |
+
+The check is purely syntactic: it walks the modifier chain in the same scope and stops at the enclosing statement boundary. It does not follow binding expressions or cross-file modifier applications.
+
+---
+
 ## Programmatic API
 
 ### Primary entry point
@@ -1048,6 +1178,73 @@ extension i18n {
 }
 ```
 
+### String Catalog validation
+
+```swift
+import SwiftL10nCore
+import Foundation
+
+// Parse all .xcstrings files under the project root
+let catalog = try StringCatalogParser.parseCatalogs(in: projectRootURL)
+print("\(catalog.keys.count) key(s) across \(catalog.languageCount) language(s)")
+
+// Parse a single catalog
+let singleCatalog = try StringCatalogParser.parse(url: catalogURL)
+print(singleCatalog.contains(key: "Delete Account"))  // true or false
+
+// Cross-reference detected strings against the catalog
+let namespaces = NamespaceInferrer().infer(from: fileScanResults)
+let validationResult = StringCatalogValidator().validate(namespaces: namespaces, against: catalog)
+
+print("\(validationResult.missingCount) missing from catalog")
+for entry in validationResult.missingFromCatalog {
+    let loc = entry.locations.first
+    print("  \"\(entry.value)\" — \(loc?.file ?? ""):\(loc?.line ?? 0)")
+}
+
+print("\(validationResult.orphanedCount) orphaned in catalog")
+for key in validationResult.orphanedInCatalog {
+    print("  \(key)")
+}
+```
+
+### Duplicate localization analysis
+
+```swift
+import SwiftL10nCore
+
+let analyzer = DuplicateLocalizationAnalyzer()
+
+// Catalog-level: multiple keys sharing the same source-language value
+let catalogGroups = analyzer.analyzeCatalog(catalog)
+for group in catalogGroups {
+    print("Value \"\(group.sharedValue)\" appears under \(group.keys.count) keys: \(group.keys.joined(separator: ", "))")
+}
+
+// Namespace-level: same string value appearing in 2+ namespaces (i18n.Common candidates)
+let nsGroups = analyzer.analyzeNamespaces(namespaces)
+for group in nsGroups {
+    let files = group.occurrences.map(\.namespace).joined(separator: ", ")
+    print("Value \"\(group.value)\" in \(files) — consider promoting to i18n.Common")
+}
+```
+
+### Accessibility audit
+
+```swift
+import SwiftL10nCore
+
+let auditor = AccessibilityAuditor()
+let diagnostics = auditor.audit(source: sourceCode, filePath: "ProfileView.swift")
+
+for warning in diagnostics {
+    let location = "\(warning.location?.file ?? ""):\(warning.location.map { "\($0.line)" } ?? "")"
+    print("[\(warning.severity)] \(warning.message) — \(location)")
+}
+// [warning] Image literal without accessibility modifier: Image("achievement-badge") — ProfileView.swift:24
+// [warning] Image literal without accessibility modifier: Image("promo-banner") — ProfileView.swift:29
+```
+
 ---
 
 ## Detection rules
@@ -1066,6 +1263,11 @@ extension i18n {
 | `.alert("…", isPresented:)` | `.alert` | `.alert("Are you sure?", isPresented: $shown) {}` |
 | `.confirmationDialog("…", isPresented:)` | `.confirmationDialog` | `.confirmationDialog("Choose", isPresented: $shown) {}` |
 | `.accessibilityLabel("…")` | `.accessibilityLabel` | `.accessibilityLabel("Close button")` |
+| `Section("…") { }` | `.section` | `Section("Account") { … }` |
+| `Picker("…", selection:) { }` | `.picker` | `Picker("Sort by", selection: $s) { … }` |
+| `Menu("…") { }` | `.menu` | `Menu("More Options") { … }` |
+| `DisclosureGroup("…") { }` | `.disclosureGroup` | `DisclosureGroup("Advanced") { … }` |
+| `.help("…")` | `.helpText` | `.help("Tap to delete your account")` |
 
 ### UIKit — detected automatically alongside SwiftUI
 
@@ -1185,7 +1387,7 @@ SwiftL10n/
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 435 tests across 32 files
+    └── SwiftL10nCoreTests/            # 447 tests across 32 files
 ```
 
 ### Detection pipeline
@@ -1236,7 +1438,7 @@ Two infrastructure domains are active, both with incremental adoption support an
 
 **Reliable today:**
 - `SwiftL10n.scan(projectPath:)` — single call generates both files and validates assets
-- String detection (SwiftUI + UIKit, 15 rules)
+- String detection (SwiftUI + UIKit, 20 rules)
 - False-positive filtering with documented exclusion reasons
 - Confidence scoring (deterministic, 0.0–1.0)
 - `i18n.swift` code generation with `String(localized:table:bundle:)` API
@@ -1259,7 +1461,7 @@ Two infrastructure domains are active, both with incremental adoption support an
 - **`.xcstrings` catalog validation** — `StringCatalogParser` + `StringCatalogValidator` cross-reference detected strings against Xcode 15+ String Catalogs; missing keys and orphaned translations reported as diagnostics
 - **Duplicate localization analysis** — `DuplicateLocalizationAnalyzer` surfaces catalog entries sharing the same value and strings appearing in 2+ namespaces
 - **Accessibility audit** — `AccessibilityAuditor` flags `Image("name")` calls missing `.accessibilityLabel` / `.accessibilityHidden`; opt-in via `accessibility_audit.enabled: true`
-- 435 tests, 0 failures
+- 447 tests, 0 failures
 
 ---
 
@@ -1404,7 +1606,7 @@ swiftl10n --version
 swift test
 ```
 
-435 tests across 32 test files, 0 failures.
+447 tests across 32 test files, 0 failures.
 
 | File | What it tests |
 |---|---|

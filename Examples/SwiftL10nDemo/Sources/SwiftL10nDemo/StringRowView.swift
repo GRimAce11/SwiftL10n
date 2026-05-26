@@ -89,6 +89,11 @@ private struct ContextBadge: View {
         case .alert:              return .red
         case .confirmationDialog: return .orange
         case .accessibilityLabel: return .mint
+        case .section:            return .brown
+        case .picker:             return .yellow
+        case .menu:               return .purple
+        case .disclosureGroup:    return .teal
+        case .helpText:           return .gray
         // UIKit
         case .uiLabel:            return .blue
         case .uiButtonTitle:      return .purple

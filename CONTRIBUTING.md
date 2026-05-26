@@ -51,13 +51,14 @@ Requirements: macOS 14+, Swift 6.0+ (Xcode 16+).
 swift test
 ```
 
-The test suite has 435 tests split across focused unit-test files and fixture-based integration tests. All tests must pass before a PR can be merged.
+The test suite has 447 tests split across focused unit-test files and fixture-based integration tests. All tests must pass before a PR can be merged.
 
 To run a single test class:
 
 ```bash
 swift test --filter ScannerTests
 swift test --filter FalsePositiveFilterTests
+swift test --filter DetectionRuleTests
 ```
 
 ---
@@ -94,10 +95,11 @@ swift test --filter FalsePositiveFilterTests
 
 1. Add a new `struct` conforming to `DetectionRule` in `Sources/SwiftL10nCore/Scanner/Rules/BuiltInRules.swift`
    (or a new file for large rule families).
-2. Add the corresponding case to `DetectionContext` with `displayName` and `propertySuffix`.
-3. Register the rule in `RuleEngine.default` inside `DetectionRule.swift`.
-4. Add a fixture line to `TestFixtures.allCallSites` in `Tests/SwiftL10nCoreTests/Fixtures.swift`.
-5. Add unit tests in `DetectionRuleTests.swift` and update `testDefaultEngineContainsAllBuiltInRules`
+2. Add the corresponding case to `DetectionContext` with `displayName` and `propertySuffix` in `DetectionContext.swift`.
+3. Add the Codable round-trip cases for the new context in `DetectionContextCodable.swift`.
+4. Register the rule in `RuleEngine.default` inside `DetectionRule.swift`.
+5. Add a fixture line to `TestFixtures.allCallSites` in `Tests/SwiftL10nCoreTests/Fixtures.swift`.
+6. Add unit tests in `DetectionRuleTests.swift` and update `testDefaultEngineContainsAllBuiltInRules`
    to reflect the new rule count.
 
 Example skeleton:

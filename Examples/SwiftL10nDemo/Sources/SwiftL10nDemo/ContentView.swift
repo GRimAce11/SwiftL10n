@@ -59,7 +59,7 @@ private struct SourcePane: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 190)
+            .frame(width: 260)
 
             Spacer()
             HStack(spacing: 4) {
@@ -103,6 +103,10 @@ private struct SourcePane: View {
                 Label("\(viewModel.recognizedCount) recognized", systemImage: "checkmark.seal")
                     .foregroundStyle(.teal)
             }
+            if viewModel.accessibilityWarningCount > 0 {
+                Label("\(viewModel.accessibilityWarningCount) a11y", systemImage: "accessibility")
+                    .foregroundStyle(.purple)
+            }
             Spacer()
             if viewModel.isScanning {
                 ProgressView().scaleEffect(0.6)
@@ -125,7 +129,7 @@ private struct ResultsPane: View {
             if viewModel.isScanning {
                 ProgressView("Scanning…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.results.isEmpty && viewModel.existingDetections.isEmpty && !viewModel.sourceCode.isEmpty {
+            } else if viewModel.results.isEmpty && viewModel.existingDetections.isEmpty && viewModel.accessibilityDiagnostics.isEmpty && !viewModel.sourceCode.isEmpty {
                 ContentUnavailableView(
                     "No localizable strings detected",
                     systemImage: "text.magnifyingglass",
@@ -140,14 +144,16 @@ private struct ResultsPane: View {
     }
 
     private var navigationTitle: String {
-        if viewModel.results.isEmpty && viewModel.recognizedCount == 0 { return "Results" }
+        if viewModel.results.isEmpty && viewModel.recognizedCount == 0 && viewModel.accessibilityWarningCount == 0 { return "Results" }
         var parts: [String] = []
         if viewModel.results.count > 0 { parts.append("\(viewModel.results.count) gaps") }
         if viewModel.recognizedCount > 0 { parts.append("\(viewModel.recognizedCount) recognized") }
+        if viewModel.accessibilityWarningCount > 0 { parts.append("\(viewModel.accessibilityWarningCount) a11y") }
         return parts.joined(separator: " · ")
     }
 
     private var navigationSubtitle: String {
+        if viewModel.accessibilityWarningCount > 0 { return "\(viewModel.accessibilityWarningCount) accessibility warning(s)" }
         if viewModel.warningCount > 0 { return "\(viewModel.warningCount) warning(s)" }
         if viewModel.recognizedCount > 0 { return "L10n. · i18n. patterns recognized" }
         return ""
@@ -176,6 +182,18 @@ private struct ResultsPane: View {
                 } header: {
                     Label("Recognized (existing localization)", systemImage: "checkmark.seal")
                         .foregroundStyle(.teal)
+                }
+            }
+
+            // Accessibility warnings
+            if !viewModel.accessibilityDiagnostics.isEmpty {
+                Section {
+                    ForEach(viewModel.accessibilityDiagnostics.indices, id: \.self) { idx in
+                        AccessibilityWarningRowView(diagnostic: viewModel.accessibilityDiagnostics[idx])
+                    }
+                } header: {
+                    Label("Accessibility warnings", systemImage: "accessibility")
+                        .foregroundStyle(.purple)
                 }
             }
         }
@@ -242,6 +260,32 @@ private struct PatternBadge: View {
             .padding(.vertical, 2)
             .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
             .foregroundStyle(Color.teal.opacity(0.8))
+    }
+}
+
+// MARK: - Accessibility warning row
+
+private struct AccessibilityWarningRowView: View {
+    let diagnostic: Diagnostic
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.purple)
+                .frame(width: 4, height: 36)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(diagnostic.message)
+                    .font(.body)
+                    .lineLimit(2)
+                if let line = diagnostic.location?.line {
+                    Text("line \(line)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
