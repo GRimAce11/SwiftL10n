@@ -10,6 +10,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0] — 2026-05-26
+
+### Added
+
+- **5 new SwiftUI detection rules** — `Section("…")`, `Picker("…", selection:)`, `Menu("…")`, `DisclosureGroup("…")`, `.help("…")` — bringing the total to 20 rules (14 SwiftUI + 6 UIKit).
+- **`--dry-run` flag** for `swiftl10n scan` — runs the full pipeline but skips writing `i18n.swift` and `Assets.swift`. Prints `[dry-run] Would write …` for each skipped file. Useful for CI preview without side effects.
+- **Shell completion hints** — `path` and `--config` arguments now carry `.file(extensions:)` annotations so `--generate-completion-script zsh|bash|fish` produces accurate completions.
+- **Xcode Build Phase guide** and **Shell Completion** section added to README.
+- **Programmatic API examples** for `StringCatalogParser`, `DuplicateLocalizationAnalyzer`, and `AccessibilityAuditor` in README.
+- **Demo app A11y fixture** — fourth fixture demonstrates `AccessibilityAuditor` with a dedicated accessibility warnings section in the results pane.
+
+### Fixed
+
+- **Swift keyword escaping** in `CodeGenerator.propertyName()` — strings like `"var"`, `"return"`, `"true"` now generate `` `var`() ``, `` `return`() ``, `` `true`() `` instead of bare reserved words that would cause the generated `i18n.swift` to fail compilation.
+- **`minimumConfidence` validation** now enforced at runtime — `ScanCommand` calls `ConfigLoader.validate()` before the pipeline, so `minimum_confidence: 1.5` in `.swiftl10n.yml` throws a clear error instead of silently producing zero detections. The `--min-confidence` CLI flag is also validated.
+- **Cache corruption** now emits a `warning` diagnostic (`Cache unreadable (…) — falling back to full scan.`) instead of silently triggering a full rescan with no explanation.
+- **`// swiftl10n:ignore`** now correctly suppresses accessibility warnings (previously only suppressed string detections).
+
+### Tests
+
+- 6 new tests for the three production fixes (keyword escaping × 5, cache corruption × 1).
+- Rule and fixture tests updated to cover all 5 new detection contexts.
+- **453 tests total, 0 failures.**
+
+---
+
 ## [1.0.0] — 2026-05-25
 
 ### Added
