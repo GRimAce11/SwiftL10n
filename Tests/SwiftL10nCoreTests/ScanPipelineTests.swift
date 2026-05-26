@@ -174,4 +174,30 @@ final class ScanPipelineTests: XCTestCase {
         let result = try await pipeline().run(sources: [tempDir.path])
         XCTAssertEqual(result.staleEntriesRemoved, 0)
     }
+
+    // MARK: - Cache corruption
+
+    func testCorruptCacheEmitsWarningAndFallsBackToFullScan() async throws {
+        try write(source: #"import SwiftUI; struct V: View { var body: some View { Text("Hello") } }"#,
+                  name: "View.swift")
+
+        let cacheDir = tempDir.appendingPathComponent(".build")
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let cacheFile = cacheDir.appendingPathComponent("swiftl10n-cache.json")
+        try "{ this is not valid json %%%".write(to: cacheFile, atomically: true, encoding: .utf8)
+
+        let config = SwiftL10nConfig(
+            sources: [tempDir.path],
+            output: .init(),
+            minimumConfidence: 0.0,
+            incremental: true
+        )
+        let result = try await ScanPipeline(config: config, baseURL: tempDir).run()
+
+        XCTAssertEqual(result.totalStrings, 1, "Full scan must still run and find the string")
+        let hasWarning = result.diagnostics.contains {
+            $0.severity == .warning && $0.message.contains("Cache unreadable")
+        }
+        XCTAssertTrue(hasWarning, "A warning diagnostic must be emitted when cache is corrupt")
+    }
 }

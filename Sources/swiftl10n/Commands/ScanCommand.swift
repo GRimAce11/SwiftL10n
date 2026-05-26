@@ -10,10 +10,12 @@ struct ScanCommand: AsyncParsableCommand {
 
     // MARK: - Arguments & Flags
 
-    @Argument(help: "Path to a .swift file or directory. Overrides 'sources' in .swiftl10n.yml.")
+    @Argument(help: "Path to a .swift file or directory. Overrides 'sources' in .swiftl10n.yml.",
+              completion: .file(extensions: ["swift"]))
     var path: String?
 
-    @Option(name: .long, help: "Path to a .swiftl10n.yml config file.")
+    @Option(name: .long, help: "Path to a .swiftl10n.yml config file.",
+            completion: .file(extensions: ["yml", "yaml"]))
     var config: String?
 
     @Flag(name: .long, help: "Print every detected string with its location and context.")
@@ -40,6 +42,9 @@ struct ScanCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Migration mode: audit (default), incremental, or strict. Overrides config.")
     var migrationMode: MigrationModeArg?
 
+    @Flag(name: .long, help: "Run the full pipeline but skip writing any files — useful for CI preview.")
+    var dryRun: Bool = false
+
     // MARK: - Run
 
     mutating func run() async throws {
@@ -62,6 +67,13 @@ struct ScanCommand: AsyncParsableCommand {
         }
 
         let effectiveConfig = loadedConfig ?? .default
+
+        if loadedConfig != nil {
+            try ConfigLoader.validate(effectiveConfig, relativeTo: configBaseURL)
+        }
+        if let mc = minConfidence, !(0.0...1.0).contains(mc) {
+            throw ValidationError("--min-confidence must be between 0.0 and 1.0, got \(mc)")
+        }
 
         // ── 2. Resolve sources ────────────────────────────────────────────────
         let sourcePaths: [String]
@@ -165,33 +177,37 @@ struct ScanCommand: AsyncParsableCommand {
 
             // Code generation
             if let outputPath = effectiveOutput {
-                let code = CodeGenerator(
-                    configuration: .init(
-                        rootEnumName: effectiveConfig.output.enumName,
-                        tableName: effectiveConfig.output.tableName
-                    )
-                ).generate(namespaces: result.namespaces)
-                let outputURL = URL(fileURLWithPath: outputPath)
-                try FileManager.default.createDirectory(
-                    at: outputURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                let existed = FileManager.default.fileExists(atPath: outputPath)
-                let contentToWrite: String
-                if effectiveConfig.output.mergeStrategy == .region {
-                    if existed, let existing = try? String(contentsOf: outputURL, encoding: .utf8) {
-                        contentToWrite = FileRegionMerger.merge(existing: existing, newContent: code)
-                            ?? FileRegionMerger.wrap(code)
-                    } else {
-                        contentToWrite = FileRegionMerger.wrap(code)
-                    }
+                if dryRun {
+                    if !quiet { print("[dry-run] Would write \(result.totalStrings) string(s) to \(URL(fileURLWithPath: outputPath).lastPathComponent).") }
                 } else {
-                    contentToWrite = code
-                }
-                try contentToWrite.write(to: outputURL, atomically: true, encoding: .utf8)
-                if !quiet {
-                    let strategyNote = effectiveConfig.output.mergeStrategy == .region ? " (region merge)" : ""
-                    print("\(existed ? "Updated" : "Created") \(outputURL.lastPathComponent)\(strategyNote).")
+                    let code = CodeGenerator(
+                        configuration: .init(
+                            rootEnumName: effectiveConfig.output.enumName,
+                            tableName: effectiveConfig.output.tableName
+                        )
+                    ).generate(namespaces: result.namespaces)
+                    let outputURL = URL(fileURLWithPath: outputPath)
+                    try FileManager.default.createDirectory(
+                        at: outputURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    let existed = FileManager.default.fileExists(atPath: outputPath)
+                    let contentToWrite: String
+                    if effectiveConfig.output.mergeStrategy == .region {
+                        if existed, let existing = try? String(contentsOf: outputURL, encoding: .utf8) {
+                            contentToWrite = FileRegionMerger.merge(existing: existing, newContent: code)
+                                ?? FileRegionMerger.wrap(code)
+                        } else {
+                            contentToWrite = FileRegionMerger.wrap(code)
+                        }
+                    } else {
+                        contentToWrite = code
+                    }
+                    try contentToWrite.write(to: outputURL, atomically: true, encoding: .utf8)
+                    if !quiet {
+                        let strategyNote = effectiveConfig.output.mergeStrategy == .region ? " (region merge)" : ""
+                        print("\(existed ? "Updated" : "Created") \(outputURL.lastPathComponent)\(strategyNote).")
+                    }
                 }
             }
 
@@ -210,21 +226,25 @@ struct ScanCommand: AsyncParsableCommand {
         }() : nil)
 
         if let assetsPath = assetsOutputPath {
-            let catalog = try AssetCatalogParser.parseCatalogs(in: configBaseURL)
-            let generatorConfig = AssetCodeGenerator.Configuration(
-                rootEnumName: effectiveConfig.assets.enumName,
-                useImageResource: effectiveConfig.assets.useImageResource
-            )
-            let assetsCode = AssetCodeGenerator(configuration: generatorConfig).generate(catalog: catalog)
-            let assetsURL  = URL(fileURLWithPath: assetsPath)
-            try FileManager.default.createDirectory(
-                at: assetsURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let existed = FileManager.default.fileExists(atPath: assetsPath)
-            try assetsCode.write(to: assetsURL, atomically: true, encoding: .utf8)
-            if !quiet {
-                print("\(existed ? "Updated" : "Created") \(assetsURL.lastPathComponent) (\(catalog.count) asset(s)).")
+            if dryRun {
+                if !quiet { print("[dry-run] Would write Assets.swift to \(URL(fileURLWithPath: assetsPath).lastPathComponent).") }
+            } else {
+                let catalog = try AssetCatalogParser.parseCatalogs(in: configBaseURL)
+                let generatorConfig = AssetCodeGenerator.Configuration(
+                    rootEnumName: effectiveConfig.assets.enumName,
+                    useImageResource: effectiveConfig.assets.useImageResource
+                )
+                let assetsCode = AssetCodeGenerator(configuration: generatorConfig).generate(catalog: catalog)
+                let assetsURL  = URL(fileURLWithPath: assetsPath)
+                try FileManager.default.createDirectory(
+                    at: assetsURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                let existed = FileManager.default.fileExists(atPath: assetsPath)
+                try assetsCode.write(to: assetsURL, atomically: true, encoding: .utf8)
+                if !quiet {
+                    print("\(existed ? "Updated" : "Created") \(assetsURL.lastPathComponent) (\(catalog.count) asset(s)).")
+                }
             }
         }
 

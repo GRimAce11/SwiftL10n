@@ -58,17 +58,54 @@ final class CodeGeneratorTests: XCTestCase {
         XCTAssertFalse(output.contains("{…}"))
     }
 
+    // MARK: - Keyword escaping
+
+    func testSwiftKeywordIsBacktickEscaped() {
+        // Text("var") with empty suffix → must produce `var`, not var (which won't compile)
+        let ns = Namespace(name: "Test", sourceFile: "t.swift", strings: [makeString("var", context: .textView)])
+        let output = generator.generate(namespaces: [ns])
+        XCTAssertTrue(output.contains("func `var`()"), "Swift keyword 'var' must be wrapped in backticks")
+        XCTAssertFalse(output.contains("func var()"), "Unescaped 'var' must not appear")
+    }
+
+    func testReturnKeywordIsBacktickEscaped() {
+        let ns = Namespace(name: "Test", sourceFile: "t.swift", strings: [makeString("return", context: .textView)])
+        let output = generator.generate(namespaces: [ns])
+        XCTAssertTrue(output.contains("func `return`()"))
+    }
+
+    func testTrueKeywordIsBacktickEscaped() {
+        let ns = Namespace(name: "Test", sourceFile: "t.swift", strings: [makeString("true", context: .textView)])
+        let output = generator.generate(namespaces: [ns])
+        XCTAssertTrue(output.contains("func `true`()"))
+    }
+
+    func testNonKeywordIsNotEscaped() {
+        let ns = Namespace(name: "Test", sourceFile: "t.swift", strings: [makeString("submit", context: .textView)])
+        let output = generator.generate(namespaces: [ns])
+        XCTAssertTrue(output.contains("func submit()"))
+        XCTAssertFalse(output.contains("`submit`"))
+    }
+
+    func testKeywordWithSuffixIsNotEscaped() {
+        // "var" + "ButtonTitle" suffix = "varButtonTitle" — not a keyword, no backticks
+        let ns = Namespace(name: "Test", sourceFile: "t.swift", strings: [makeString("var", context: .buttonLabel)])
+        let output = generator.generate(namespaces: [ns])
+        XCTAssertTrue(output.contains("func varButtonTitle()"))
+        XCTAssertFalse(output.contains("`varButtonTitle`"))
+    }
+
     // MARK: - Helpers
 
     private func namespace(values: [String]) -> Namespace {
         Namespace(name: "Test", sourceFile: "t.swift", strings: values.map { makeString($0) })
     }
 
-    private func makeString(_ value: String, hasInterpolation: Bool = false) -> DetectedString {
+    private func makeString(_ value: String, hasInterpolation: Bool = false, context: DetectionContext = .buttonLabel) -> DetectedString {
         DetectedString(
             value: value,
             location: SourceLocation(file: "t.swift", line: 1, column: 1),
-            context: .buttonLabel,
+            context: context,
             confidence: 0.95,
             hasInterpolation: hasInterpolation
         )

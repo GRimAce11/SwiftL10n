@@ -154,8 +154,21 @@ public struct CodeGenerator: Sendable {
             + words.dropFirst().map(\.localizedCapitalized).joined()
 
         let suffix = string.context.propertySuffix
-        return suffix.isEmpty ? base : base + suffix
+        let name = suffix.isEmpty ? base : base + suffix
+        return Self.swiftKeywords.contains(name) ? "`\(name)`" : name
     }
+
+    private static let swiftKeywords: Set<String> = [
+        "associatedtype", "class", "deinit", "enum", "extension", "fileprivate", "func",
+        "import", "init", "inout", "internal", "let", "open", "operator", "private",
+        "protocol", "public", "rethrows", "static", "struct", "subscript", "typealias", "var",
+        "break", "case", "catch", "continue", "default", "defer", "do", "else", "fallthrough",
+        "for", "guard", "if", "in", "repeat", "return", "throw", "throws", "try", "where", "while",
+        "as", "false", "is", "nil", "self", "super", "true", "any", "some",
+        "convenience", "dynamic", "final", "get", "indirect", "lazy", "mutating",
+        "nonmutating", "optional", "override", "postfix", "precedence", "prefix",
+        "required", "set", "unowned", "weak", "willSet", "didSet",
+    ]
 
     private func escaped(_ value: String) -> String {
         value

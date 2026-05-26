@@ -113,9 +113,17 @@ public struct ScanPipeline: Sendable {
 
         // ── 2. Load incremental cache snapshot ────────────────────────────────
         let cacheURL = baseURL.appendingPathComponent(ScanCache.defaultRelativePath)
-        var cache: ScanCache = config.incremental
-            ? ((try? IncrementalScanCache.load(from: cacheURL)) ?? ScanCache())
-            : ScanCache()
+        var cache: ScanCache
+        if config.incremental {
+            do {
+                cache = try IncrementalScanCache.load(from: cacheURL)
+            } catch {
+                cache = ScanCache()
+                engine.emit(.warning, "Cache unreadable (\(error.localizedDescription)) — falling back to full scan.")
+            }
+        } else {
+            cache = ScanCache()
+        }
         let cacheSnapshot = cache  // value-type copy — safe for concurrent reads
 
         // ── 3. Parallel scan ──────────────────────────────────────────────────
@@ -160,7 +168,18 @@ public struct ScanPipeline: Sendable {
 
                     var allDiagnostics = scanResult.diagnostics
                     if accessibilityAuditEnabled {
-                        allDiagnostics += AccessibilityAuditor().audit(source: source, filePath: fileURL.path)
+                        let suppression = InlineSuppression(source: source)
+                        for d in AccessibilityAuditor().audit(source: source, filePath: fileURL.path) {
+                            if let line = d.location?.line, suppression.isSuppressed(line: line) {
+                                allDiagnostics.append(Diagnostic(
+                                    severity: .note,
+                                    message: "Suppressed accessibility warning — swiftl10n:ignore",
+                                    location: d.location
+                                ))
+                            } else {
+                                allDiagnostics.append(d)
+                            }
+                        }
                     }
 
                     return .scanned(
