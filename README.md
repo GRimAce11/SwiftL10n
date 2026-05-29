@@ -159,11 +159,21 @@ Run the app once on Simulator or macOS. The Xcode console prints every detected 
 ✓ Created → .../Sources/YourApp/Generated/Assets.swift
 ```
 
-> **Sandbox error?** If you see *"You don't have permission to save the file…"*:
-> 1. Xcode → Your Target → **Signing & Capabilities** → **App Sandbox** → untick **Enable App Sandbox**, or
-> 2. Keep the sandbox and add **File Access → User Selected Files → Read/Write**
+> **If the app sandbox blocks the write**, SwiftL10n automatically falls back to the system temp directory and prints an exact `cp` command in the console — no crash, no error to handle:
 >
-> The `#if DEBUG` guard ensures this code never runs in a release build.
+> ```
+> ⚠ SwiftL10n: cannot write to project directory (sandbox restriction).
+>   i18n.swift was written to a temporary location instead:
+>     /tmp/i18n.swift
+>
+>   Copy it into your project once:
+>     cp "/tmp/i18n.swift" ".../Generated/i18n.swift"
+>
+>   To avoid this message permanently, run SwiftL10n from an Xcode build
+>   phase using the CLI tool — build phases run outside the app sandbox.
+> ```
+>
+> Run the printed `cp` command once, drag the file into Xcode, and you're done. The `#if DEBUG` guard ensures `scan()` never runs in a release build.
 
 **Remove the `SwiftL10n.scan()` call** after both files are generated. You only need it when regenerating.
 
@@ -418,7 +428,7 @@ class RootViewController: UIViewController {
 
 > **Remove the `SwiftL10n.scan()` call** after your generated files are in Xcode. You only need it when regenerating.
 >
-> **Sandbox error on iOS?** App Sandbox is macOS-only — iOS has no toggle. Run on **Simulator** (not a real device) and the write will succeed without any settings change.
+> **Sandbox on iOS?** If the sandbox blocks the write, SwiftL10n saves the file to the system temp directory and prints the exact `cp` command to copy it into your project — no error thrown. Run on **Simulator** for the best experience; the same fallback applies on a real device.
 
 ---
 
@@ -735,11 +745,13 @@ Use with `--migration-mode strict` to fail the PR build when any new hardcoded s
 
 ### Xcode Build Phase
 
-Run `swiftl10n scan` automatically on every Xcode build:
+Run `swiftl10n scan` automatically on every Xcode build. Build phases run **outside the app sandbox**, so files are always written directly to your project — no temp-directory fallback needed.
 
 1. Select your target → **Build Phases** → **+** → **New Run Script Phase**
 2. Drag the new phase **above Compile Sources**
-3. Paste the script:
+3. Choose one of the scripts below.
+
+**Option A — installed CLI** (`/usr/local/bin/swiftl10n`):
 
 ```bash
 if which swiftl10n > /dev/null; then
@@ -747,7 +759,21 @@ if which swiftl10n > /dev/null; then
 fi
 ```
 
-Using `--format github` means detected strings appear inline in the Xcode issue navigator as warnings. The `if which` guard keeps the build clean for team members who haven't installed `swiftl10n` yet.
+The `if which` guard keeps the build clean for team members who haven't installed `swiftl10n` yet.
+
+**Option B — no install required** (uses `swift run` from a local clone):
+
+```bash
+cd /path/to/SwiftL10n && \
+swift run -c release swiftl10n scan "$SRCROOT/YourApp" \
+  --output "$SRCROOT/YourApp/Generated/i18n.swift" \
+  --assets-output "$SRCROOT/YourApp/Generated/Assets.swift" \
+  --format github
+```
+
+`swift run` caches the compiled binary after the first build, so subsequent runs are fast.
+
+Using `--format github` means detected strings appear inline in the Xcode issue navigator as warnings.
 
 For CI enforcement, use `--migration-mode strict` and the build will fail if any hardcoded string is introduced:
 
@@ -1046,6 +1072,30 @@ let result = try await SwiftL10n.scan(
     generateAssets:    true
 )
 print("\(result.strings.stringCount) string(s) · \(result.assets?.imageCount ?? 0) image(s)")
+```
+
+> **Sandbox-safe:** if the app sandbox blocks the write, SwiftL10n automatically saves the file to the system temp directory and prints the exact `cp` command in the console. `result.strings.outputURL` and `result.assets?.outputURL` point to wherever the file was actually written (project path or temp path).
+
+### Running without installing the CLI
+
+If you have the SwiftL10n repo cloned locally, you can run a scan without building or installing anything:
+
+```bash
+# From the SwiftL10n repo directory
+swift run swiftl10n scan /path/to/YourApp \
+  --output /path/to/YourApp/Generated/i18n.swift \
+  --assets-output /path/to/YourApp/Generated/Assets.swift
+```
+
+`swift run` compiles on first use and caches the result — subsequent runs are instant. The CLI runs outside any app sandbox so writes always succeed directly to your project.
+
+You can also use this in an Xcode build phase without a global install:
+
+```bash
+# Build Phase script (no swiftl10n binary required)
+cd /path/to/SwiftL10n && \
+swift run -c release swiftl10n scan "$SRCROOT/YourApp" \
+  --output "$SRCROOT/YourApp/Generated/i18n.swift"
 ```
 
 ### Scan a source string (low-level)
@@ -1383,7 +1433,8 @@ SwiftL10n/
 │       │   ├── DuplicateLocalizationAnalyzer.swift  # Duplicate key/value detection
 │       │   └── AccessibilityAuditor.swift           # Image accessibility completeness
 │       ├── Common/
-│       │   └── CommonStringExtractor.swift
+│       │   ├── CommonStringExtractor.swift
+│       │   └── FileWriter.swift               # Sandbox-safe write with temp-dir fallback
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
@@ -1595,6 +1646,8 @@ Or in Xcode: **File → Add Package Dependencies** → enter the URL → tick on
 
 ### `swiftl10n` — CLI tool
 
+**Install globally** (build once, run from anywhere):
+
 ```bash
 git clone https://github.com/GRimAce11/SwiftL10n.git
 cd SwiftL10n
@@ -1602,6 +1655,17 @@ swift build -c release
 cp .build/release/swiftl10n /usr/local/bin/
 swiftl10n --version
 ```
+
+> **Why is the first build slow?** SwiftL10n depends on SwiftSyntax (~300 source files). Release builds compile it fully on the first run. Subsequent builds skip it entirely — the result is cached in `.build/`. Use all CPU cores to shorten the first build: `swift build -c release -j $(sysctl -n hw.logicalcpu)`
+
+**Without installing** (use `swift run` from the cloned repo):
+
+```bash
+swift run swiftl10n scan /path/to/YourApp \
+  --output /path/to/YourApp/Generated/i18n.swift
+```
+
+No binary copy needed — `swift run` compiles on first use and caches the result.
 
 ---
 

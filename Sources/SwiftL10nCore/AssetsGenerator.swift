@@ -74,19 +74,6 @@ public struct AssetsGenerator: Sendable {
         public let outputURL: URL
     }
 
-    // MARK: - Errors
-
-    public enum GeneratorError: Error, LocalizedError {
-        case permissionDenied(String)
-
-        public var errorDescription: String? {
-            switch self {
-            case .permissionDenied(let path):
-                return "Permission denied — cannot write to: \(path)"
-            }
-        }
-    }
-
     // MARK: - Configuration
 
     private let sourcesURL: URL
@@ -135,28 +122,13 @@ public struct AssetsGenerator: Sendable {
             print("   \(merged.imageNames.count) image(s) · \(merged.colorNames.count) color(s)")
         }
 
-        // Write
-        do {
-            try FileManager.default.createDirectory(
-                at: outputURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let existed = FileManager.default.fileExists(atPath: outputURL.path)
-            try code.write(to: outputURL, atomically: true, encoding: .utf8)
-            let action = existed ? "Updated" : "Created"
-            print("✓ \(action) → \(outputURL.path)")
-        } catch let error as NSError
-            where error.domain == NSCocoaErrorDomain
-               && [NSFileWriteNoPermissionError,
-                   NSFileReadNoPermissionError].contains(error.code) {
-            throw GeneratorError.permissionDenied(outputURL.path)
-        }
+        let writtenURL = try writeGeneratedFile(code, to: outputURL)
 
         return Result(
             catalogCount: catalogs.count,
             imageCount:   merged.imageNames.count,
             colorCount:   merged.colorNames.count,
-            outputURL:    outputURL
+            outputURL:    writtenURL
         )
     }
 
