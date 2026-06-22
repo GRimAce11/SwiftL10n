@@ -7,9 +7,14 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs for the same ref (e.g. new pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: Swift ${{ matrix.swift }} on ${{ matrix.os }}
+    name: Build & Test (Swift ${{ matrix.swift }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -34,8 +39,97 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      - name: Build
-        run: swift build -c release 2>&1 | xcbeautify --quiet || swift build -c release
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Build (release)
+        run: swift build -c release
 
       - name: Test
-        run: swift test 2>&1 | xcbeautify || swift test
+        run: swift test --parallel
+
+  smoke:
+    name: Generated-code smoke test
+    runs-on: macos-15
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Build CLI
+        run: swift build -c release
+
+      # End-to-end guard for the CLI write path (not covered by the unit tests,
+      # which exercise CodeGenerator/parser in isolation):
+      #   1. the generated i18n.swift must be valid, compilable Swift, and
+      #   2. regeneration must be lossless — a call site migrated to a generated
+      #      accessor must NOT have its symbol dropped on the next scan.
+      - name: Verify generation is valid and lossless
+        run: |
+          set -euo pipefail
+          BIN="$(swift build -c release --show-bin-path)/swiftl10n"
+          TMP="$(mktemp -d)"
+          GEN="$TMP/Sources/Generated/i18n.swift"
+          SDK="$(xcrun --sdk macosx --show-sdk-path)"
+          mkdir -p "$TMP/Sources"
+
+          cat > "$TMP/.swiftl10n.yml" <<'YML'
+          sources: [Sources]
+          minimum_confidence: 0.0
+          output:
+            path: Sources/Generated/i18n.swift
+            enum_name: i18n
+          YML
+
+          cat > "$TMP/Sources/AdLibraryView.swift" <<'SWIFT'
+          import SwiftUI
+          struct AdLibraryView: View {
+              var body: some View { Text("Sponsored") }
+          }
+          SWIFT
+          cat > "$TMP/Sources/HomeView.swift" <<'SWIFT'
+          import SwiftUI
+          struct HomeView: View {
+              var body: some View { Text("Welcome") }
+          }
+          SWIFT
+
+          echo "::group::Run 1 — initial generation"
+          "$BIN" scan --config "$TMP/.swiftl10n.yml" -q
+          test -f "$GEN" || { echo "::error::generator did not produce $GEN"; exit 1; }
+          xcrun swiftc -typecheck -sdk "$SDK" -target arm64-apple-macos13.0 "$GEN"
+          echo "::endgroup::"
+
+          # Migrate the AdLibrary call site: the literal disappears from source.
+          cat > "$TMP/Sources/AdLibraryView.swift" <<'SWIFT'
+          import SwiftUI
+          struct AdLibraryView: View {
+              var body: some View { Text(i18n.AdLibrary.sponsored()) }
+          }
+          SWIFT
+
+          echo "::group::Run 2 — regeneration after migration"
+          "$BIN" scan --config "$TMP/.swiftl10n.yml" -q
+          xcrun swiftc -typecheck -sdk "$SDK" -target arm64-apple-macos13.0 "$GEN"
+          if ! grep -q "static func sponsored()" "$GEN"; then
+            echo "::error::lossy regeneration — i18n.AdLibrary.sponsored() was dropped while still referenced"
+            exit 1
+          fi
+          echo "OK: migrated accessor preserved across regeneration"
+          echo "::endgroup::"
