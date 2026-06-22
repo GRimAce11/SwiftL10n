@@ -33,21 +33,37 @@ public struct CodeGenerator: Sendable {
     // MARK: - Generation
 
     /// Render all namespaces to a single `.swift` source string.
-    public func generate(namespaces: [Namespace]) -> String {
+    ///
+    /// - Parameters:
+    ///   - namespaces: Freshly-detected namespaces from the current scan.
+    ///   - preserved: Accessors recovered from a previously-generated file that
+    ///     must survive regeneration (they are still referenced in source but
+    ///     their literal has been migrated away). Within a namespace, a freshly
+    ///     scanned string always wins over a preserved accessor with the same
+    ///     function name. Preserved-only namespaces are emitted too.
+    public func generate(namespaces: [Namespace], preserved: [PreservedAccessor] = []) -> String {
         var lines: [String] = []
 
         lines += header()
         lines += rootEnumDeclaration()
         lines.append("")
 
+        let preservedByNamespace = Dictionary(grouping: preserved, by: \.namespace)
+        let namespaceByName      = Dictionary(namespaces.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let allNames             = Set(namespaces.map(\.name)).union(preservedByNamespace.keys)
+
         // Common always first, then the rest alphabetically
-        let sorted = namespaces.sorted {
-            if $0.name == "Common" { return true  }
-            if $1.name == "Common" { return false }
-            return $0.name < $1.name
+        let sortedNames = allNames.sorted {
+            if $0 == "Common" { return true  }
+            if $1 == "Common" { return false }
+            return $0 < $1
         }
-        for namespace in sorted {
-            lines += namespaceExtension(namespace)
+        for name in sortedNames {
+            lines += namespaceExtension(
+                name:      name,
+                strings:   namespaceByName[name]?.strings ?? [],
+                preserved: preservedByNamespace[name] ?? []
+            )
         }
 
         return lines.joined(separator: "\n")
@@ -76,30 +92,53 @@ public struct CodeGenerator: Sendable {
         ]
     }
 
-    private func namespaceExtension(_ namespace: Namespace) -> [String] {
+    private func namespaceExtension(name: String, strings: [DetectedString], preserved: [PreservedAccessor]) -> [String] {
         var lines: [String] = []
         lines.append("extension \(configuration.rootEnumName) {")
-        lines.append("    enum \(namespace.name) {")
+        lines.append("    enum \(name) {")
 
-        for string in deduplicated(namespace.strings) {
-            let funcName = propertyName(for: string)
-            let comment  = "\(namespace.name): \(string.context.displayName) — \(escaped(string.value))"
-            lines.append("        /// \"\(escaped(string.value))\"")
-            lines.append("        static func \(funcName)() -> String {")
-            lines.append("            String(")
-            lines.append("                localized: \"\(escaped(string.value))\",")
-            lines.append("                table: General.table,")
-            lines.append("                bundle: General.bundle,")
-            lines.append("                comment: \"\(comment)\"")
-            lines.append("            )")
-            lines.append("        }")
-            lines.append("")
+        // Bare function names already emitted from the fresh scan — a preserved
+        // accessor with the same name is skipped (the scan reflects the live value).
+        var emitted = Set<String>()
+
+        for string in deduplicated(strings) {
+            let bare    = propertyNameBare(for: string)
+            emitted.insert(bare)
+            let escVal  = escaped(string.value)
+            let comment = "\(name): \(string.context.displayName) — \(escVal)"
+            lines += accessor(funcName: backticked(bare), escapedValue: escVal, escapedComment: comment)
+        }
+
+        for preservedAccessor in preserved where !emitted.contains(preservedAccessor.funcName) {
+            emitted.insert(preservedAccessor.funcName)
+            lines += accessor(
+                funcName:       backticked(preservedAccessor.funcName),
+                escapedValue:   preservedAccessor.escapedValue,
+                escapedComment: preservedAccessor.escapedComment
+            )
         }
 
         lines.append("    }")
         lines.append("}")
         lines.append("")
         return lines
+    }
+
+    /// Render one accessor's lines. Inputs are already source-escaped so that
+    /// freshly-scanned strings and preserved accessors emit identically.
+    private func accessor(funcName: String, escapedValue: String, escapedComment: String) -> [String] {
+        [
+            "        /// \"\(escapedValue)\"",
+            "        static func \(funcName)() -> String {",
+            "            String(",
+            "                localized: \"\(escapedValue)\",",
+            "                table: General.table,",
+            "                bundle: General.bundle,",
+            "                comment: \"\(escapedComment)\"",
+            "            )",
+            "        }",
+            "",
+        ]
     }
 
     // MARK: - Deduplication
@@ -142,6 +181,11 @@ public struct CodeGenerator: Sendable {
     // MARK: - Naming Helpers
 
     func propertyName(for string: DetectedString) -> String {
+        backticked(propertyNameBare(for: string))
+    }
+
+    /// Function name without keyword backticking — used as the dedup/merge key.
+    func propertyNameBare(for string: DetectedString) -> String {
         let words = string.value
             .components(separatedBy: .init(charactersIn: " \t\n-_.,;:!?()[]{}\"'→←↑↓•…"))
             .filter { !$0.isEmpty }
@@ -154,8 +198,12 @@ public struct CodeGenerator: Sendable {
             + words.dropFirst().map(\.localizedCapitalized).joined()
 
         let suffix = string.context.propertySuffix
-        let name = suffix.isEmpty ? base : base + suffix
-        return Self.swiftKeywords.contains(name) ? "`\(name)`" : name
+        return suffix.isEmpty ? base : base + suffix
+    }
+
+    /// Wrap reserved Swift keywords in backticks so the generated identifier compiles.
+    private func backticked(_ name: String) -> String {
+        Self.swiftKeywords.contains(name) ? "`\(name)`" : name
     }
 
     private static let swiftKeywords: Set<String> = [

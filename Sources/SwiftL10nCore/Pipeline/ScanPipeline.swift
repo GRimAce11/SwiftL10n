@@ -45,6 +45,10 @@ public struct ScanPipeline: Sendable {
         /// `Image("name")` calls flagged for missing accessibility modifiers.
         /// Zero when `accessibility_audit.enabled` is `false`.
         public let accessibilityWarnings: Int
+        /// Dot-path keys (`"Namespace.func"`) of generated accessors still referenced
+        /// in source, e.g. `"AdLibrary.title"`. Empty unless `collectAccessorReferences`
+        /// was requested. Drives reference-aware preservation during regeneration.
+        public let referencedGeneratedAccessors: Set<String>
 
         /// Sum of strings across all namespaces.
         public var totalStrings: Int { namespaces.reduce(0) { $0 + $1.strings.count } }
@@ -72,23 +76,41 @@ public struct ScanPipeline: Sendable {
     ///   - sources: Override `config.sources`. `nil` uses config values.
     ///   - minimumConfidence: Override `config.minimumConfidence`. `nil` uses config value.
     ///   - migrationMode: Override `config.migration.mode`. `nil` uses config value.
+    ///   - collectAccessorReferences: When `true`, the pre-pass also recognizes
+    ///     references to the generated root enum (`config.output.enumName`) so the
+    ///     result reports which generated accessors are still used in source. The
+    ///     CLI sets this when it is about to (re)generate, enabling reference-aware
+    ///     preservation of previously-generated keys.
     public func run(
         sources: [String]? = nil,
         minimumConfidence: Double? = nil,
-        migrationMode: SwiftL10nConfig.MigrationConfig.Mode? = nil
+        migrationMode: SwiftL10nConfig.MigrationConfig.Mode? = nil,
+        collectAccessorReferences: Bool = false
     ) async throws -> PipelineResult {
         let startTime           = Date()
         let effectiveSources    = sources ?? config.sources
         let effectiveConfidence = minimumConfidence ?? config.minimumConfidence
         let effectiveMode       = migrationMode ?? config.migration.mode
         let strategy            = config.namespaceStrategy
+        let referencePattern    = config.output.enumName
 
         let prePasActive = config.existingLocalization.isActive
             || effectiveMode == .incremental
             || effectiveMode == .strict
+            || collectAccessorReferences
 
+        // When collecting accessor references, recognize the generated root enum
+        // in addition to any user-configured existing-localization patterns.
+        var detectorPatterns = config.existingLocalization.patterns
+        if collectAccessorReferences, !detectorPatterns.contains(referencePattern) {
+            detectorPatterns.append(referencePattern)
+        }
+        let detectorConfig = ExistingLocalizationDetector.Config(
+            patterns: detectorPatterns,
+            excludeArgumentsOf: config.existingLocalization.excludeArgumentsOf
+        )
         let detector: ExistingLocalizationDetector? = prePasActive
-            ? ExistingLocalizationDetector(config: config.existingLocalization.detectorConfig)
+            ? ExistingLocalizationDetector(config: detectorConfig)
             : nil
 
         let scanner = StringScanner(minimumConfidence: effectiveConfidence)
@@ -147,7 +169,7 @@ public struct ScanPipeline: Sendable {
                             cacheKey:          cacheKey,
                             strings:           entry.detectedStrings,
                             diagnostics:       entry.diagnostics,
-                            existingCount:     entry.existingLocalizationDetections.count
+                            existingDetections: entry.existingLocalizationDetections
                         )
                     }
 
@@ -208,20 +230,33 @@ public struct ScanPipeline: Sendable {
         var existingLocalizationCount = 0
         var suppressedStringCount     = 0
         var cacheHits                 = 0
+        var referencedGeneratedAccessors: Set<String> = []
         var newEntries: [(key: String, entry: ScanCacheEntry)] = []
+
+        // Extract "Namespace.func" keys from detections that reference the generated root enum.
+        let referencePrefix = referencePattern + "."
+        func collectReferences(_ detections: [ExistingLocalizationDetector.Detection]) {
+            guard collectAccessorReferences else { return }
+            for detection in detections where detection.matchedPattern == referencePattern {
+                guard detection.fullExpression.hasPrefix(referencePrefix) else { continue }
+                referencedGeneratedAccessors.insert(String(detection.fullExpression.dropFirst(referencePrefix.count)))
+            }
+        }
 
         for result in parallelResults {
             switch result {
-            case let .cached(key, strings, diags, existingCount):
+            case let .cached(key, strings, diags, existingDetections):
                 diags.forEach { engine.emit($0) }
                 if !strings.isEmpty { fileResults.append((filePath: key, strings: strings)) }
-                existingLocalizationCount += existingCount
+                existingLocalizationCount += existingDetections.count
+                collectReferences(existingDetections)
                 cacheHits += 1
 
             case let .scanned(key, filePath, strings, diags, existingDetections, suppressionLocs, hash):
                 diags.forEach { engine.emit($0) }
                 if !strings.isEmpty { fileResults.append((filePath: filePath, strings: strings)) }
                 existingLocalizationCount += existingDetections.count
+                collectReferences(existingDetections)
                 suppressedStringCount += diags.filter {
                     $0.severity == .note && $0.message.contains("excluded localization function")
                 }.count
@@ -336,7 +371,8 @@ public struct ScanPipeline: Sendable {
             missingCatalogKeys:       missingCatalogKeys,
             orphanedCatalogKeys:      orphanedCatalogKeys,
             duplicateCatalogGroups:   duplicateCatalogGroups,
-            accessibilityWarnings:    accessibilityWarnings
+            accessibilityWarnings:    accessibilityWarnings,
+            referencedGeneratedAccessors: referencedGeneratedAccessors
         )
     }
 
@@ -391,10 +427,10 @@ public struct ScanPipeline: Sendable {
 
 private enum FileResult: Sendable {
     case cached(
-        cacheKey:      String,
-        strings:       [DetectedString],
-        diagnostics:   [Diagnostic],
-        existingCount: Int
+        cacheKey:           String,
+        strings:            [DetectedString],
+        diagnostics:        [Diagnostic],
+        existingDetections: [ExistingLocalizationDetector.Detection]
     )
     case scanned(
         cacheKey:           String,
@@ -409,9 +445,9 @@ private enum FileResult: Sendable {
 
     var sortKey: String {
         switch self {
-        case .cached(let k, _, _, _):       return k
+        case .cached(let k, _, _, _):           return k
         case .scanned(let k, _, _, _, _, _, _): return k
-        case .failed:                        return ""
+        case .failed:                           return ""
         }
     }
 }

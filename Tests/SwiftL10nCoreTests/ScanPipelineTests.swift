@@ -19,6 +19,7 @@ final class ScanPipelineTests: XCTestCase {
 
     // MARK: - Helpers
 
+    @discardableResult
     private func write(source: String, name: String) throws -> URL {
         let url = tempDir.appendingPathComponent(name)
         try source.write(to: url, atomically: true, encoding: .utf8)
@@ -199,5 +200,42 @@ final class ScanPipelineTests: XCTestCase {
             $0.severity == .warning && $0.message.contains("Cache unreadable")
         }
         XCTAssertTrue(hasWarning, "A warning diagnostic must be emitted when cache is corrupt")
+    }
+
+    // MARK: - Accessor reference collection (reference-aware preservation)
+
+    func testCollectsReferencesToGeneratedAccessors() async throws {
+        // A source file that has been migrated to use the generated accessor:
+        // the literal is gone, only the i18n.AdLibrary.title() reference remains.
+        try write(source: """
+        import SwiftUI
+        struct AdLibraryView: View {
+            var body: some View {
+                Text(i18n.AdLibrary.title())
+                Text("Still hardcoded")
+            }
+        }
+        """, name: "AdLibraryView.swift")
+
+        let result = try await pipeline().run(
+            sources: [tempDir.path],
+            collectAccessorReferences: true
+        )
+
+        XCTAssertTrue(result.referencedGeneratedAccessors.contains("AdLibrary.title"),
+            "Migrated accessor references must be collected for reference-aware preservation")
+    }
+
+    func testReferencesEmptyWhenNotCollecting() async throws {
+        try write(source: """
+        import SwiftUI
+        struct V: View {
+            var body: some View { Text(i18n.AdLibrary.title()) }
+        }
+        """, name: "ContentView.swift")
+
+        let result = try await pipeline().run(sources: [tempDir.path])
+        XCTAssertTrue(result.referencedGeneratedAccessors.isEmpty,
+            "Reference collection must be opt-in to keep the default pre-pass cost unchanged")
     }
 }
