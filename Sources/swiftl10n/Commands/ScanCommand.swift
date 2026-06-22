@@ -100,7 +100,8 @@ struct ScanCommand: AsyncParsableCommand {
         let result = try await pipeline.run(
             sources: sourcePaths,
             minimumConfidence: minConfidence,
-            migrationMode: migrationMode?.coreMode
+            migrationMode: migrationMode?.coreMode,
+            collectAccessorReferences: effectiveOutput != nil
         )
 
         // ── 5. Output ─────────────────────────────────────────────────────────
@@ -177,21 +178,34 @@ struct ScanCommand: AsyncParsableCommand {
 
             // Code generation
             if let outputPath = effectiveOutput {
+                let outputURL = URL(fileURLWithPath: outputPath)
+                let existed = FileManager.default.fileExists(atPath: outputPath)
+
+                // Reference-aware preservation: recover accessors from the existing
+                // file that are still referenced in source (their literal may have
+                // been migrated away) so regeneration is additive, not lossy.
+                var preserved: [PreservedAccessor] = []
+                if existed, let existing = try? String(contentsOf: outputURL, encoding: .utf8) {
+                    let parsed = GeneratedFileParser.parse(existing, rootEnumName: effectiveConfig.output.enumName)
+                    preserved = GeneratedFileParser.preserving(parsed, referencedIn: result.referencedGeneratedAccessors)
+                }
+
                 if dryRun {
-                    if !quiet { print("[dry-run] Would write \(result.totalStrings) string(s) to \(URL(fileURLWithPath: outputPath).lastPathComponent).") }
+                    if !quiet {
+                        let preservedNote = preserved.isEmpty ? "" : " (preserving \(preserved.count) migrated key(s))"
+                        print("[dry-run] Would write \(result.totalStrings) string(s) to \(outputURL.lastPathComponent)\(preservedNote).")
+                    }
                 } else {
                     let code = CodeGenerator(
                         configuration: .init(
                             rootEnumName: effectiveConfig.output.enumName,
                             tableName: effectiveConfig.output.tableName
                         )
-                    ).generate(namespaces: result.namespaces)
-                    let outputURL = URL(fileURLWithPath: outputPath)
+                    ).generate(namespaces: result.namespaces, preserved: preserved)
                     try FileManager.default.createDirectory(
                         at: outputURL.deletingLastPathComponent(),
                         withIntermediateDirectories: true
                     )
-                    let existed = FileManager.default.fileExists(atPath: outputPath)
                     let contentToWrite: String
                     if effectiveConfig.output.mergeStrategy == .region {
                         if existed, let existing = try? String(contentsOf: outputURL, encoding: .utf8) {
