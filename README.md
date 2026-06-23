@@ -43,7 +43,7 @@ Seven principles govern every design decision:
 ## Features
 
 - **20 detection rules** out of the box — SwiftUI and UIKit detected automatically, no configuration needed
-- **Smart false-positive prevention** — SF Symbol names, URLs, file paths, reverse-DNS keys, `snake_case`, `camelCase`, and `SCREAMING_CASE` identifiers are all filtered out
+- **Smart false-positive prevention** — SF Symbol names, URLs, file paths, reverse-DNS keys, `snake_case`, `camelCase`, `SCREAMING_CASE` identifiers, and emoji-only strings are all filtered out; strings that mix text with emoji (e.g. `"Let's go 🚀"`) are kept
 - **Confidence scoring** — every result carries a deterministic `0.0–1.0` score adjusted for string content and enclosing SwiftUI context
 - **Interpolation awareness** — `Text("Hello \(name)!")` is detected, templated as `"Hello {…}!"`, and flagged with a warning; it is skipped during code generation
 - **Enclosing context** — each string records the surrounding type, property, and function
@@ -1349,6 +1349,7 @@ for warning in diagnostics {
 | `camelCase` | `"viewModelIdentifier"` | Programmatic key |
 | `SCREAMING_CASE` | `"FEATURE_FLAG"` | Compile-time constant |
 | Interpolated strings | `"Hello \(name)!"` | Detected but flagged; skipped in codegen |
+| Emoji-only strings | `"👋🎉"`, `"👨‍👩‍👧"` | No translatable text content; mixed strings like `"Save ✅"` are kept |
 
 ---
 
@@ -1517,7 +1518,7 @@ Two infrastructure domains are active, both with incremental adoption support an
 - **Swift keyword escaping** — generated `i18n.swift` wraps reserved words in backticks so strings like `"var"` or `"return"` never produce code that fails to compile
 - **Config validation** — `output.enum_name` / `assets.enum_name` validated as valid Swift identifiers before any file is written; `minimum_confidence` range enforced at startup
 - **Diagnostic completeness** — file read errors, cache write failures, and malformed `.xcstrings` now emit actionable warning diagnostics instead of silently degrading
-- 457 tests, 0 failures
+- 517 tests, 0 failures
 
 ---
 
@@ -1675,7 +1676,7 @@ No binary copy needed — `swift run` compiles on first use and caches the resul
 swift test
 ```
 
-457 tests across 33 test files, 0 failures.
+517 tests across 33 test files, 0 failures.
 
 | File | What it tests |
 |---|---|
