@@ -286,6 +286,7 @@ private extension ExclusionReason {
         case .snakeCaseIdentifier:    return "looks like a snake_case identifier"
         case .camelCaseIdentifier:    return "looks like a camelCase identifier"
         case .allCapsConstant:        return "looks like an ALL_CAPS constant"
+        case .emojiOnly:              return "contains only emoji — no translatable text"
         }
     }
 }

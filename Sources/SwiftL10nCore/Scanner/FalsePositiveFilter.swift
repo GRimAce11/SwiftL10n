@@ -31,6 +31,10 @@ public enum ExclusionReason: Sendable, Equatable {
     /// All-uppercase letters, contains at least one underscore, no spaces, 3+ characters.
     /// e.g. `SOME_CONSTANT`, `DEBUG_LEVEL`.
     case allCapsConstant
+
+    /// Contains only emoji characters (and optional whitespace).
+    /// Strings that mix emoji with text are kept; pure-emoji strings have no translatable content.
+    case emojiOnly
 }
 
 // MARK: -
@@ -53,6 +57,9 @@ public struct FalsePositiveFilter: Sendable {
 
         // 1. Empty / whitespace-only
         guard !trimmed.isEmpty else { return .emptyString }
+
+        // 2a. Emoji-only strings — no translatable text content
+        if isEmojiOnly(trimmed) { return .emojiOnly }
 
         // 2. URL-like
         let lower = trimmed.lowercased()
@@ -137,4 +144,25 @@ public struct FalsePositiveFilter: Sendable {
         "macOS", "iOS", "watchOS", "tvOS", "visionOS",
         "eBook", "eSIM",
     ]
+
+    /// Returns `true` when every non-whitespace scalar in `value` is an emoji.
+    /// A string like "Hello 👋" returns `false`; "👋🎉" returns `true`.
+    private func isEmojiOnly(_ value: String) -> Bool {
+        let nonWhitespace = value.unicodeScalars.filter { $0.value != 0x20 && !$0.properties.isWhitespace }
+        guard !nonWhitespace.isEmpty else { return false }
+        return nonWhitespace.allSatisfy { isEmojiScalar($0) }
+    }
+
+    private func isEmojiScalar(_ scalar: Unicode.Scalar) -> Bool {
+        if scalar.properties.isEmojiPresentation { return true }
+        // Emoji with value > 0xFF covers multi-byte emoji that have the isEmoji flag
+        // but aren't rendered as emoji by default (e.g. digit keycaps need variation selector).
+        if scalar.properties.isEmoji && scalar.value > 0xFF { return true }
+        let v = scalar.value
+        // Combining characters that appear only inside emoji sequences:
+        return v == 0xFE0F   // variation selector-16 (emoji presentation)
+            || v == 0x200D   // zero-width joiner
+            || v == 0x20E3   // combining enclosing keycap
+            || v == 0x1F3FB || v == 0x1F3FC || v == 0x1F3FD || v == 0x1F3FE || v == 0x1F3FF // skin tones
+    }
 }
