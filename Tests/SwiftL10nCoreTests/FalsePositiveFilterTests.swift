@@ -155,4 +155,49 @@ final class FalsePositiveFilterTests: XCTestCase {
         // "user name" has a space — the snake_case check requires no spaces
         XCTAssertNil(filter.exclusionReason(for: "user name"))
     }
+
+    // MARK: - Emoji-only strings
+
+    func testSingleEmojiExcluded() {
+        XCTAssertEqual(filter.exclusionReason(for: "👋"), .emojiOnly)
+    }
+
+    func testMultipleEmojisExcluded() {
+        XCTAssertEqual(filter.exclusionReason(for: "👋🎉🔥"), .emojiOnly)
+    }
+
+    func testZWJSequenceExcluded() {
+        // Family emoji built from ZWJ sequences: 👨‍👩‍👧
+        XCTAssertEqual(filter.exclusionReason(for: "👨‍👩‍👧"), .emojiOnly)
+    }
+
+    func testSkinToneModifierExcluded() {
+        // Thumbs up with medium skin tone modifier
+        XCTAssertEqual(filter.exclusionReason(for: "👍🏽"), .emojiOnly)
+    }
+
+    func testFlagEmojiExcluded() {
+        // Country flag (two regional indicator letters)
+        XCTAssertEqual(filter.exclusionReason(for: "🇺🇸"), .emojiOnly)
+    }
+
+    func testEmojiWithSurroundingWhitespaceExcluded() {
+        XCTAssertEqual(filter.exclusionReason(for: "  🎉  "), .emojiOnly)
+    }
+
+    func testTextWithTrailingEmojiPassesThrough() {
+        XCTAssertNil(filter.exclusionReason(for: "Let's go 🚀"))
+    }
+
+    func testTextWithLeadingEmojiPassesThrough() {
+        XCTAssertNil(filter.exclusionReason(for: "👋 Hello"))
+    }
+
+    func testTextWithEmojiInMiddlePassesThrough() {
+        XCTAssertNil(filter.exclusionReason(for: "Save ✅ done"))
+    }
+
+    func testPlainTextWithNoEmojiPassesThrough() {
+        XCTAssertNil(filter.exclusionReason(for: "Notifications"))
+    }
 }
