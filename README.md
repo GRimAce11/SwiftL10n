@@ -42,7 +42,7 @@ Seven principles govern every design decision:
 
 ## Features
 
-- **Build tool plugin** (`SwiftL10nPlugin`) — SPM `BuildToolPlugin` + `XcodeProjectPlugin` that runs `swiftl10n scan` before the Swift compiler; eliminates the two-build gap; outputs to DerivedData; works with both SPM packages and `.xcodeproj` Xcode projects
+- **Build tool plugin** (`SwiftL10nPlugin`) — SPM `BuildToolPlugin` that runs `swiftl10n scan` before the Swift compiler; eliminates the two-build gap; outputs to DerivedData; for SPM package targets only (Xcode `.xcodeproj` targets use a Run Script Build Phase — see [Xcode Build Phase](#xcode-build-phase))
 - **20 detection rules** out of the box — SwiftUI and UIKit detected automatically, no configuration needed
 - **Smart false-positive prevention** — SF Symbol names, URLs, file paths, reverse-DNS keys, `snake_case`, `camelCase`, `SCREAMING_CASE` identifiers, and emoji-only strings are all filtered out; strings that mix text with emoji (e.g. `"Let's go 🚀"`) are kept
 - **Static string constant detection** — `static let/var name = "…"` inside enums, structs, and classes detected at confidence ≈0.60; invisible at the default 0.85 threshold; surface via `minimum_confidence: 0.5`
@@ -87,25 +87,11 @@ Three steps. First build generates everything.
 https://github.com/GRimAce11/SwiftL10n.git
 ```
 
-On the product chooser, add `SwiftL10nPlugin` to your app target. Then wire it up:
-
-- Select your **app target** → **Build Phases** tab → expand **Run Build Tool Plug-ins** → **+** → choose `SwiftL10nPlugin`
-
-> If you don't see a "Run Build Tool Plug-ins" phase, make sure `SwiftL10nPlugin` is already in your Package Dependencies (the product chooser step above).
-
-Ignore `SwiftL10nCore` and `swiftl10n` unless you need the programmatic API or CLI.
-
-| Product | Purpose | Add to app? |
-|---|---|---|
-| `SwiftL10nPlugin` | Build tool plugin — generates `i18n.swift` + `Assets.swift` before every compile | **Yes ✓** |
-| `SwiftL10nCore` | Library for the programmatic scanning API | Only if needed |
-| `swiftl10n` | CLI terminal tool | No ✗ |
-
-**Package.swift:**
+**For SPM package targets (Package.swift)** — add `SwiftL10nPlugin` to your target:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.1.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.2.3"),
 ],
 targets: [
     .target(
@@ -118,6 +104,18 @@ targets: [
 ```
 
 > **First-time Xcode permission prompt:** when you build for the first time Xcode shows a dialog asking whether to allow the plugin to run. Click **Trust & Enable**. This is a one-time prompt per project.
+
+**For Xcode project targets (.xcodeproj)** — `XcodeProjectPlugin` is not reliably available across Xcode versions, so the plugin does not support `.xcodeproj` targets. Use a **Run Script Build Phase** instead:
+
+1. On the product chooser add **`swiftl10n`** (the CLI executable) to your app target
+2. Select your **app target** → **Build Phases** → **+** → **New Run Script Phase** → drag it **above Compile Sources**
+3. Paste the script from [Xcode Build Phase](#xcode-build-phase) below
+
+| Product | SPM target | Xcode project target |
+|---|---|---|
+| `SwiftL10nPlugin` | **Yes — add as plugin** | No ✗ (use Run Script) |
+| `swiftl10n` | No ✗ | **Yes — add as dependency for Run Script** |
+| `SwiftL10nCore` | Only if you need the programmatic API | Only if you need the programmatic API |
 
 ---
 
@@ -258,7 +256,7 @@ No drag needed, no git commit needed — the plugin manages both files.
 Click **Trust & Enable**. This is a one-time prompt per project. Without it the plugin is disabled and no files are generated.
 
 **`i18n` / `Assets` type not found after adding the plugin**  
-The plugin only runs when you build. Press **⌘B** (not just run). If the type still can't be found, check that `SwiftL10nPlugin` appears in your target's Build Phases → Run Build Tool Plug-ins.
+The plugin only runs when you build. Press **⌘B** (not just run). If the type still can't be found, check that `SwiftL10nPlugin` appears in your target's plugins list (`Package.swift` → `plugins:`). For `.xcodeproj` targets use a Run Script Build Phase — the plugin does not support `.xcodeproj` targets.
 
 **Too many false-positive detections cluttering the output**  
 Raise the threshold in `.swiftl10n.yml`:
@@ -843,15 +841,7 @@ Use with `--migration-mode strict` to fail the PR build when any new hardcoded s
 
 ### Build Tool Plugin
 
-`SwiftL10nPlugin` is an SPM build tool plugin that runs `swiftl10n scan` before the Swift compiler, eliminating the two-build gap that affects the runtime scanning approach.
-
-#### Setup (Xcode project)
-
-1. **File → Add Package Dependencies** → add the SwiftL10n URL → on the product chooser add `SwiftL10nPlugin` to your app target
-2. Select your **app target** → **Build Phases** → expand **Run Build Tool Plug-ins** → **+** → choose `SwiftL10nPlugin`
-3. Build (⌘B) — Xcode asks for permission the first time; click **Trust & Enable**
-
-The plugin runs before every compile, writing `i18n.swift` and `Assets.swift` into DerivedData.
+`SwiftL10nPlugin` is an SPM build tool plugin that runs `swiftl10n scan` before the Swift compiler, eliminating the two-build gap that affects the runtime scanning approach. **It works for SPM package targets only.** For `.xcodeproj` Xcode project targets, use the [Xcode Build Phase](#xcode-build-phase) approach instead.
 
 #### Setup (Package.swift)
 
@@ -1789,7 +1779,7 @@ targets: [
 ]
 ```
 
-Or in Xcode: **File → Add Package Dependencies** → enter the URL → add `SwiftL10nPlugin` to your app target → then in your target's **Build Phases → Run Build Tool Plug-ins → +** select it.
+For SPM package targets only. For `.xcodeproj` Xcode projects use the [Xcode Build Phase](#xcode-build-phase) approach with the `swiftl10n` CLI product.
 
 ### `SwiftL10nCore` — library (programmatic API only)
 
