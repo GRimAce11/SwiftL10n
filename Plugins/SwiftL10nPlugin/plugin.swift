@@ -87,8 +87,10 @@ struct SwiftL10nPlugin: BuildToolPlugin {
 // MARK: - Xcode project targets
 
 #if canImport(XcodeProjectPlugin)
-import XcodeProjectPlugin
-
+// In Xcode 16+, XcodeProjectPlugin / XcodePluginContext / XcodeTarget are part of
+// PackagePlugin (already imported above). The canImport guard still serves as the
+// conditional-compilation sentinel that prevents this block from compiling in
+// plain `swift build` environments where these types are unavailable.
 extension SwiftL10nPlugin: XcodeProjectPlugin {
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
         let tool = try context.tool(named: "swiftl10n")
