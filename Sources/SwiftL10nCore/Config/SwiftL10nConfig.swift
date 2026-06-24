@@ -31,6 +31,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
     public let stringCatalog: StringCatalogConfig
     /// Accessibility label completeness audit settings.
     public let accessibilityAudit: AccessibilityAuditConfig
+    /// Controls detection of strings that aren't inline literals (static constants, indirect args).
+    public let stringDiscovery: StringDiscoveryConfig
 
     // MARK: - Nested: StringCatalogConfig
 
@@ -79,6 +81,44 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        }
+    }
+
+    // MARK: - Nested: StringDiscoveryConfig
+
+    /// Settings for detecting localizable strings that aren't inline string literals.
+    public struct StringDiscoveryConfig: Sendable, Codable, Equatable {
+        /// Scan `static let/var name = "…"` declarations inside enums, structs, and classes.
+        ///
+        /// Results are emitted at confidence ≈0.60, which is below the default
+        /// `minimum_confidence: 0.85` threshold — so they are **invisible by default**.
+        /// Lower your threshold (e.g. `minimum_confidence: 0.5`) to surface them.
+        /// Default: `true`.
+        public let staticConstants: Bool
+
+        /// Emit a `.suggestion` diagnostic when a known UI call site has a non-literal
+        /// argument — e.g. `Text(someVariable)` or `Button(Titles.save) {}`.
+        ///
+        /// Suggestions are below `.warning` severity and only appear in `--verbose` output.
+        /// They are never shown in normal runs and never fail CI. Default: `true`.
+        public let indirectArgumentHints: Bool
+
+        public init(staticConstants: Bool = true, indirectArgumentHints: Bool = true) {
+            self.staticConstants       = staticConstants
+            self.indirectArgumentHints = indirectArgumentHints
+        }
+
+        public static let `default` = StringDiscoveryConfig()
+
+        enum CodingKeys: String, CodingKey {
+            case staticConstants       = "static_constants"
+            case indirectArgumentHints = "indirect_argument_hints"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            staticConstants       = try c.decodeIfPresent(Bool.self, forKey: .staticConstants)       ?? true
+            indirectArgumentHints = try c.decodeIfPresent(Bool.self, forKey: .indirectArgumentHints) ?? true
         }
     }
 
@@ -264,7 +304,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         migration: .default,
         namespaceStrategy: .file,
         stringCatalog: .default,
-        accessibilityAudit: .default
+        accessibilityAudit: .default,
+        stringDiscovery: .default
     )
 
     // MARK: - Init
@@ -280,7 +321,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         migration: MigrationConfig = .default,
         namespaceStrategy: NamespaceStrategy = .file,
         stringCatalog: StringCatalogConfig = .default,
-        accessibilityAudit: AccessibilityAuditConfig = .default
+        accessibilityAudit: AccessibilityAuditConfig = .default,
+        stringDiscovery: StringDiscoveryConfig = .default
     ) {
         self.sources              = sources
         self.output               = output
@@ -293,6 +335,7 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         self.namespaceStrategy    = namespaceStrategy
         self.stringCatalog        = stringCatalog
         self.accessibilityAudit   = accessibilityAudit
+        self.stringDiscovery      = stringDiscovery
     }
 
     // MARK: - CodingKeys (snake_case YAML ↔ camelCase Swift)
@@ -309,6 +352,7 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         case namespaceStrategy    = "namespace_strategy"
         case stringCatalog        = "string_catalog"
         case accessibilityAudit   = "accessibility_audit"
+        case stringDiscovery      = "string_discovery"
     }
 
     // Provide defaults for every field so a minimal YAML (e.g. `sources: [Sources]`) is valid.
@@ -323,7 +367,8 @@ public struct SwiftL10nConfig: Sendable, Codable, Equatable {
         existingLocalization = try c.decodeIfPresent(ExistingLocalizationConfig.self, forKey: .existingLocalization) ?? .default
         migration            = try c.decodeIfPresent(MigrationConfig.self,        forKey: .migration)            ?? .default
         namespaceStrategy    = try c.decodeIfPresent(NamespaceStrategy.self,      forKey: .namespaceStrategy)    ?? .file
-        stringCatalog        = try c.decodeIfPresent(StringCatalogConfig.self,    forKey: .stringCatalog)        ?? .default
+        stringCatalog        = try c.decodeIfPresent(StringCatalogConfig.self,     forKey: .stringCatalog)        ?? .default
         accessibilityAudit   = try c.decodeIfPresent(AccessibilityAuditConfig.self, forKey: .accessibilityAudit) ?? .default
+        stringDiscovery      = try c.decodeIfPresent(StringDiscoveryConfig.self,   forKey: .stringDiscovery)     ?? .default
     }
 }

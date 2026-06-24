@@ -113,7 +113,10 @@ public struct ScanPipeline: Sendable {
             ? ExistingLocalizationDetector(config: detectorConfig)
             : nil
 
-        let scanner = StringScanner(minimumConfidence: effectiveConfidence)
+        let scanner = StringScanner(
+            minimumConfidence: effectiveConfidence,
+            discoveryConfig: config.stringDiscovery
+        )
         let engine  = DiagnosticsEngine()
 
         // ── 1. Collect all file URLs (sequential) ──────────────────────────────

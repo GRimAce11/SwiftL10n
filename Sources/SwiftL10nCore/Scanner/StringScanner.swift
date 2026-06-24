@@ -16,14 +16,18 @@ public struct StringScanner: Sendable {
     /// Default `0.0` — report everything and let callers decide.
     public let minimumConfidence: Double
 
+    public let discoveryConfig: SwiftL10nConfig.StringDiscoveryConfig
+
     public init(
         ruleEngine: RuleEngine = .default,
         filter: FalsePositiveFilter = FalsePositiveFilter(),
-        minimumConfidence: Double = 0.0
+        minimumConfidence: Double = 0.0,
+        discoveryConfig: SwiftL10nConfig.StringDiscoveryConfig = .default
     ) {
         self.ruleEngine = ruleEngine
         self.filter = filter
         self.minimumConfidence = minimumConfidence
+        self.discoveryConfig = discoveryConfig
     }
 
     /// Read `filePath` from disk and scan it.
@@ -48,6 +52,7 @@ public struct StringScanner: Sendable {
             ruleEngine: ruleEngine,
             filter: filter,
             minimumConfidence: minimumConfidence,
+            discoveryConfig: discoveryConfig,
             suppressionIndex: suppressionIndex,
             inlineSuppression: InlineSuppression(source: source)
         )
@@ -79,6 +84,7 @@ final class StringScannerVisitor: SyntaxVisitor {
     private let ruleEngine: RuleEngine
     private let filter: FalsePositiveFilter
     private let minimumConfidence: Double
+    private let discoveryConfig: SwiftL10nConfig.StringDiscoveryConfig
     private let suppressionIndex: SuppressionIndex
     private let inlineSuppression: InlineSuppression
     private let scorer = ConfidenceScorer()
@@ -90,6 +96,7 @@ final class StringScannerVisitor: SyntaxVisitor {
         ruleEngine: RuleEngine,
         filter: FalsePositiveFilter,
         minimumConfidence: Double,
+        discoveryConfig: SwiftL10nConfig.StringDiscoveryConfig = .default,
         suppressionIndex: SuppressionIndex = .empty,
         inlineSuppression: InlineSuppression = .empty
     ) {
@@ -98,6 +105,7 @@ final class StringScannerVisitor: SyntaxVisitor {
         self.ruleEngine        = ruleEngine
         self.filter            = filter
         self.minimumConfidence = minimumConfidence
+        self.discoveryConfig   = discoveryConfig
         self.suppressionIndex  = suppressionIndex
         self.inlineSuppression = inlineSuppression
         super.init(viewMode: .sourceAccurate)
@@ -111,7 +119,15 @@ final class StringScannerVisitor: SyntaxVisitor {
             guard let (value, hasInterp, litLoc) = extractString(
                 from: node.arguments,
                 selector: rule.stringArgumentSelector
-            ) else { continue }
+            ) else {
+                // Rule matched the call site but the argument is not a string literal.
+                // Emit a suggestion so the developer knows this site may carry a
+                // localizable string they can't be extracted automatically.
+                if discoveryConfig.indirectArgumentHints {
+                    emitIndirectArgumentHint(for: node, context: context, rule: rule)
+                }
+                continue
+            }
 
             // Suppression: string literal is an argument to an excluded localization function
             if let litLoc, suppressionIndex.isSuppressed(litLoc) {
@@ -127,6 +143,36 @@ final class StringScannerVisitor: SyntaxVisitor {
                    context: context, baseConfidence: rule.baseConfidence, node: node)
             // No break — allows e.g. UIAlertController to match both
             // UIAlertControllerTitleRule and UIAlertControllerMessageRule
+        }
+        return .visitChildren
+    }
+
+    // MARK: - Visit static string constants
+
+    /// Detects `static let/var name = "literal"` inside any type declaration.
+    /// Emitted at confidence 0.60 — below the default 0.85 threshold, so results
+    /// are invisible unless the caller lowers `minimumConfidence`.
+    override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard discoveryConfig.staticConstants else { return .visitChildren }
+
+        let isStatic = node.modifiers.contains { $0.name.tokenKind == .keyword(.static) }
+        guard isStatic else { return .visitChildren }
+
+        for binding in node.bindings {
+            guard let initializer = binding.initializer,
+                  let literal = initializer.value.as(StringLiteralExprSyntax.self)
+            else { continue }
+
+            let (value, hasInterp) = segments(of: literal)
+            guard !value.isEmpty else { continue }
+
+            let filterTarget = hasInterp ? staticContent(of: value) : value
+            if filter.exclusionReason(for: filterTarget) != nil { continue }
+
+            if inlineSuppression.isSuppressed(line: makeLocation(for: node).line) { continue }
+
+            record(rawValue: value, hasInterpolation: hasInterp,
+                   context: .staticStringConstant, baseConfidence: 0.60, node: node)
         }
         return .visitChildren
     }
@@ -226,6 +272,37 @@ final class StringScannerVisitor: SyntaxVisitor {
             hasInterpolation: hasInterpolation,
             enclosingContext: enclosing,
             scoreExplanation: explanation
+        ))
+    }
+
+    // MARK: - Indirect Argument Hints
+
+    /// Emits a `.suggestion` when a UI call site's argument is not a string literal.
+    /// `.suggestion` is below `.warning` — never shown in normal output, never fails CI.
+    /// Visible only in `--verbose` mode.
+    private func emitIndirectArgumentHint(
+        for node: FunctionCallExprSyntax,
+        context: DetectionContext,
+        rule: some DetectionRule
+    ) {
+        guard let arg = node.arguments.argument(for: rule.stringArgumentSelector) else { return }
+        let expr = arg.expression
+
+        // Skip obvious non-string expression kinds to reduce noise.
+        if expr.is(NilLiteralExprSyntax.self)     { return }
+        if expr.is(BooleanLiteralExprSyntax.self)  { return }
+        if expr.is(IntegerLiteralExprSyntax.self)  { return }
+        if expr.is(FloatLiteralExprSyntax.self)    { return }
+        if expr.is(ClosureExprSyntax.self)         { return }
+        if expr.is(ArrayExprSyntax.self)           { return }
+        if expr.is(DictionaryExprSyntax.self)      { return }
+        if expr.is(KeyPathExprSyntax.self)         { return }
+
+        let argText = expr.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        emittedDiagnostics.append(Diagnostic(
+            severity: .suggestion,
+            message: "\(context.displayName)(\(argText)) — non-literal argument; may carry a localizable string",
+            location: makeLocation(for: node)
         ))
     }
 

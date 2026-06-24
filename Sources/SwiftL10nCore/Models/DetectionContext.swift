@@ -76,6 +76,11 @@ public enum DetectionContext: Sendable, Hashable {
     /// A call site we recognise as UI-facing but haven't given a dedicated case yet.
     /// `callee` is the bare function/method name (e.g. `"sheet"`).
     case unknownUIContext(callee: String)
+
+    /// `static let/var name = "…"` inside an enum, struct, or class.
+    /// Detected at confidence ≈0.60 — below the default 0.85 threshold, so these
+    /// are invisible unless you lower `minimum_confidence` in your config.
+    case staticStringConstant
 }
 
 extension DetectionContext {
@@ -105,6 +110,7 @@ extension DetectionContext {
         case .uiAlertAction:                   return "UIAlertAction.title"
         case .uiTabBarItem:                    return "UITabBarItem.title"
         case .unknownUIContext(let callee):    return callee
+        case .staticStringConstant:            return "staticConstant"
         }
     }
 
@@ -137,6 +143,7 @@ extension DetectionContext {
         case .uiAlertAction:                   return "ActionTitle"
         case .uiTabBarItem:                    return "TabTitle"
         case .unknownUIContext:                return ""
+        case .staticStringConstant:            return ""
         }
     }
 }

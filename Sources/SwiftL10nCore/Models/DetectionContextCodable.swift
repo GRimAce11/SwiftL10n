@@ -27,6 +27,7 @@ extension DetectionContext: Codable {
         case "uiAlertMessage":          self = .uiAlertMessage
         case "uiAlertAction":           self = .uiAlertAction
         case "uiTabBarItem":            self = .uiTabBarItem
+        case "staticStringConstant": self = .staticStringConstant
         default:
             let callee = (try? c.decodeIfPresent(String.self, forKey: .callee)) ?? type
             self = .unknownUIContext(callee: callee)
@@ -59,8 +60,10 @@ extension DetectionContext: Codable {
         case .uiAlertAction:          try c.encode("uiAlertAction",          forKey: .type)
         case .uiTabBarItem:           try c.encode("uiTabBarItem",           forKey: .type)
         case .unknownUIContext(let callee):
-            try c.encode("unknownUIContext", forKey: .type)
-            try c.encode(callee,             forKey: .callee)
+            try c.encode("unknownUIContext",     forKey: .type)
+            try c.encode(callee,                 forKey: .callee)
+        case .staticStringConstant:
+            try c.encode("staticStringConstant", forKey: .type)
         }
     }
 }
