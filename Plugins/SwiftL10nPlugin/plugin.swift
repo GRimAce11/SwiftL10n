@@ -9,12 +9,11 @@ struct SwiftL10nPlugin: BuildToolPlugin {
     func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
         guard let sourceTarget = target as? SourceModuleTarget else { return [] }
 
-        let tool    = try context.tool(named: "swiftl10n")
-        let workDir = context.pluginWorkDirectoryURL
+        let tool      = try context.tool(named: "swiftl10n")
+        let workDir   = context.pluginWorkDirectoryURL
         let i18nURL   = workDir.appendingPathComponent("i18n.swift")
         let assetsURL = workDir.appendingPathComponent("Assets.swift")
-        // directoryURL is not yet available in this SDK; directory.string still works.
-        let sourceDir = sourceTarget.directory.string
+        let sourceDir = sourceTarget.directoryURL.path(percentEncoded: false)
 
         var args: [String] = [
             "scan", sourceDir,
@@ -42,11 +41,13 @@ struct SwiftL10nPlugin: BuildToolPlugin {
         var dir = URL(fileURLWithPath: startPath, isDirectory: true)
         while true {
             let candidate = dir.appendingPathComponent(".swiftl10n.yml")
-            if fm.fileExists(atPath: candidate.path) { return candidate.path }
+            if fm.fileExists(atPath: candidate.path(percentEncoded: false)) {
+                return candidate.path(percentEncoded: false)
+            }
             for anchor in anchors
-            where fm.fileExists(atPath: dir.appendingPathComponent(anchor).path) { return nil }
+            where fm.fileExists(atPath: dir.appendingPathComponent(anchor).path(percentEncoded: false)) { return nil }
             let parent = dir.deletingLastPathComponent()
-            guard parent.standardized.path != dir.standardized.path else { return nil }
+            guard parent.standardized.path(percentEncoded: false) != dir.standardized.path(percentEncoded: false) else { return nil }
             dir = parent
         }
     }
@@ -56,13 +57,12 @@ struct SwiftL10nPlugin: BuildToolPlugin {
 
 #if canImport(XcodeProjectPlugin)
 import XcodeProjectPlugin
-// The XcodeProjectPlugin *module* exports XcodePluginContext and XcodeTarget but
-// does NOT contain the XcodeProjectPlugin *protocol* — that lives in PackagePlugin.
-extension SwiftL10nPlugin: PackagePlugin.XcodeProjectPlugin {
+
+extension SwiftL10nPlugin: XcodeBuildToolPlugin {
 
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
-        let tool    = try context.tool(named: "swiftl10n")
-        let workDir = context.pluginWorkDirectoryURL
+        let tool      = try context.tool(named: "swiftl10n")
+        let workDir   = context.pluginWorkDirectoryURL
         let i18nURL   = workDir.appendingPathComponent("i18n.swift")
         let assetsURL = workDir.appendingPathComponent("Assets.swift")
 
@@ -71,7 +71,7 @@ extension SwiftL10nPlugin: PackagePlugin.XcodeProjectPlugin {
         }
         guard !swiftFiles.isEmpty else { return [] }
 
-        let projectDir = context.xcodeProject.directory.string
+        let projectDir = context.xcodeProject.directoryURL.path(percentEncoded: false)
 
         var args: [String] = [
             "scan", projectDir,
