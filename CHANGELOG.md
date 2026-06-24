@@ -10,6 +10,40 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.2.0] — 2026-06-24
+
+### Added
+
+- **`SwiftL10nPlugin` — build tool plugin (SPM `BuildToolPlugin`)** — runs `swiftl10n scan` before the Swift compiler on every build, eliminating the two-build gap that affected the runtime `.task {}` scanning approach. Outputs `i18n.swift` and `Assets.swift` into DerivedData; inputs all target `.swift` files so Xcode's dependency graph invalidates correctly. Auto-discovers `.swiftl10n.yml` using the same project-root anchoring logic as the CLI (`Package.swift`, `.git`, `.xcworkspace`, `.xcodeproj`). New product `SwiftL10nPlugin` in `Package.swift`.
+- **`XcodeProjectPlugin` support** — `SwiftL10nPlugin` now conforms to `XcodeProjectPlugin` (via `#if canImport(XcodeProjectPlugin)`) so it works with `.xcodeproj` Xcode projects, not only SPM packages. Uses `context.xcodeProject.directory` as the scan root; add `sources:` in `.swiftl10n.yml` to narrow the scope to a specific subdirectory (e.g. skip `Pods/`). Setup: **Build Phases → Run Build Tool Plug-ins → +**.
+- **`DetectionContext.staticStringConstant`** — new detection context for `static let/var name = "…"` declarations inside enums, structs, and classes. Detected at confidence ≈0.60; invisible at the default 0.85 threshold. Lower `minimum_confidence` to `0.5` in `.swiftl10n.yml` to surface them. `FalsePositiveFilter` and inline suppression apply normally. Instance `let` and top-level `let` are excluded.
+- **`StringDiscoveryConfig`** — new `string_discovery:` section in `.swiftl10n.yml`:
+  ```yaml
+  string_discovery:
+    static_constants: true         # enable/disable static let/var scanning
+    indirect_argument_hints: true  # enable/disable indirect argument hints
+  ```
+  Both default to `true`; neither surface in normal output at the default confidence threshold. `swiftl10n init` now generates this section (commented out) with full inline documentation.
+- **Indirect argument hints** — when a known UI call site (e.g. `Text(…)`, `Button(…)`) receives a non-literal argument, a `.suggestion` diagnostic is emitted: `"Text receives a non-literal argument 'myTitle' — verify it is localised"`. Severity is `.suggestion` (below `.warning`); never shown in CI or normal runs, only with `--verbose`. Skips nil, Bool, Int, Float, closure, array, dictionary, and key-path expressions.
+- **Emoji-only string filtering** — strings consisting entirely of emoji characters (e.g. `"🎉"`, `"🚀✨"`) are now excluded from detection by `FalsePositiveFilter`. Strings that mix text and emoji (e.g. `"Let's go 🚀"`) are still detected as before.
+- **26 new tests** in `StringDiscoveryTests.swift` covering static constant detection (enum/struct/class, confidence gating, false-positive filter, instance let exclusion, inline suppression), indirect argument hints (variable/member-access/Button, skip nil/Bool/Int/closure, severity), and `StringDiscoveryConfig` YAML round-trip.
+
+### Fixed
+
+- **Reference-aware lossless i18n regeneration** — regeneration with `merge_strategy: region` previously dropped manually-added groups that appeared outside the generated marker block when the generated set of keys changed. The regenerator now reads the existing file first, extracts the manually-managed content from outside the markers, and re-inserts it after writing the new generated block. Manually-added extensions and overrides are fully preserved across all regeneration passes.
+- **Sandbox-safe file writes** — `FileWriter` now falls back to the system temp directory when the build sandbox blocks writes to the configured output path (e.g. inside a plugin environment). Prevents silent failures where the file appeared not to be written with no diagnostic emitted.
+- **Silent error surfacing** — file read errors, `enum_name` / `assets.enum_name` validation failures, cache write failures, and malformed `.xcstrings` entries that previously degraded silently now emit `.warning` diagnostics with actionable messages. Removed dead entries from `FalsePositiveFilter` that were unreachable due to ordering.
+
+### CI
+
+- Strengthened PR gate: adds a `swift build -c debug` step and a generation smoke test (`swiftl10n scan --dry-run`) to each PR check run.
+
+### Tests
+
+- **507 tests, 35 test files, 0 failures.**
+
+---
+
 ## [1.1.0] — 2026-05-26
 
 ### Added
@@ -479,7 +513,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `interpolationMix`, `verbatimOptOut`)
 - Swift 6 strict concurrency — fully `Sendable`, zero data races
 
-[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/GRimAce11/SwiftL10n/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/GRimAce11/SwiftL10n/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/GRimAce11/SwiftL10n/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.9.0...1.0.0
 [0.9.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/GRimAce11/SwiftL10n/compare/0.7.0...0.8.0

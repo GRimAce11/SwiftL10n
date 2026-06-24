@@ -42,8 +42,11 @@ Seven principles govern every design decision:
 
 ## Features
 
+- **Build tool plugin** (`SwiftL10nPlugin`) — SPM `BuildToolPlugin` + `XcodeProjectPlugin` that runs `swiftl10n scan` before the Swift compiler; eliminates the two-build gap; outputs to DerivedData; works with both SPM packages and `.xcodeproj` Xcode projects
 - **20 detection rules** out of the box — SwiftUI and UIKit detected automatically, no configuration needed
 - **Smart false-positive prevention** — SF Symbol names, URLs, file paths, reverse-DNS keys, `snake_case`, `camelCase`, `SCREAMING_CASE` identifiers, and emoji-only strings are all filtered out; strings that mix text with emoji (e.g. `"Let's go 🚀"`) are kept
+- **Static string constant detection** — `static let/var name = "…"` inside enums, structs, and classes detected at confidence ≈0.60; invisible at the default 0.85 threshold; surface via `minimum_confidence: 0.5`
+- **Indirect argument hints** — `.suggestion` diagnostics when a UI call site receives a non-literal argument (e.g. `Text(myVariable)`); visible only with `--verbose`, never fails CI
 - **Confidence scoring** — every result carries a deterministic `0.0–1.0` score adjusted for string content and enclosing SwiftUI context
 - **Interpolation awareness** — `Text("Hello \(name)!")` is detected, templated as `"Hello {…}!"`, and flagged with a warning; it is skipped during code generation
 - **Enclosing context** — each string records the surrounding type, property, and function
@@ -1580,7 +1583,7 @@ SwiftL10n/
 │       └── Diagnostics/
 │           └── DiagnosticsEngine.swift
 └── Tests/
-    └── SwiftL10nCoreTests/            # 457 tests across 33 files
+    └── SwiftL10nCoreTests/            # 507 tests across 35 files
 ```
 
 ### Detection pipeline
@@ -1659,7 +1662,7 @@ Two infrastructure domains are active, both with incremental adoption support an
 - **Swift keyword escaping** — generated `i18n.swift` wraps reserved words in backticks so strings like `"var"` or `"return"` never produce code that fails to compile
 - **Config validation** — `output.enum_name` / `assets.enum_name` validated as valid Swift identifiers before any file is written; `minimum_confidence` range enforced at startup
 - **Diagnostic completeness** — file read errors, cache write failures, and malformed `.xcstrings` now emit actionable warning diagnostics instead of silently degrading
-- 517 tests, 0 failures
+- 507 tests, 0 failures
 
 ---
 
