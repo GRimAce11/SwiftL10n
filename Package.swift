@@ -11,9 +11,13 @@ let package = Package(
         .visionOS(.v1),
     ],
     products: [
-        // ── For app developers ──────────────────────────────────────────────
-        // Add SwiftL10nCore to your app target.
-        // Import SwiftL10nCore and call generateStrings(sourcesPath:outputPath:).
+        // ── For app targets (Xcode or SwiftPM) ──────────────────────────────
+        // Add SwiftL10nPlugin to your app target — it runs `swiftl10n scan`
+        // before every compile so Generated/ is always up to date.
+        .plugin(name: "SwiftL10nPlugin", targets: ["SwiftL10nPlugin"]),
+
+        // ── For programmatic / library use ──────────────────────────────────
+        // Import SwiftL10nCore if you need the scanning API directly.
         .library(name: "SwiftL10nCore", targets: ["SwiftL10nCore"]),
 
         // ── For terminal use only ────────────────────────────────────────────
@@ -28,6 +32,13 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
     ],
     targets: [
+        // MARK: - Build Tool Plugin
+        .plugin(
+            name: "SwiftL10nPlugin",
+            capability: .buildTool(),
+            dependencies: [.target(name: "swiftl10n")]
+        ),
+
         // MARK: - CLI Executable
         .executableTarget(
             name: "swiftl10n",

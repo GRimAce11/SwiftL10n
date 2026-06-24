@@ -84,29 +84,63 @@ Add the package, add one line to your `ContentView`, change one path, run.
 https://github.com/GRimAce11/SwiftL10n.git
 ```
 
-Xcode shows two products. **Only add `SwiftL10nCore`:**
+Xcode shows three products:
 
 | Product | What it is | Add to app? |
 |---|---|---|
-| `SwiftL10nCore` | The library — scanning, validation, and generation API | **Yes ✓** |
+| `SwiftL10nPlugin` | Build tool plugin — generates files before every compile | **Yes ✓ (recommended)** |
+| `SwiftL10nCore` | The library — scanning, validation, and generation API | Optional (programmatic use) |
 | `swiftl10n` | A CLI terminal tool — not a library | No ✗ |
 
 **Package.swift:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.0.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.1.0"),
 ],
 targets: [
-    .target(name: "YourApp", dependencies: [
-        .product(name: "SwiftL10nCore", package: "SwiftL10n"),
-    ]),
+    .target(
+        name: "YourApp",
+        plugins: [
+            .plugin(name: "SwiftL10nPlugin", package: "SwiftL10n"),
+        ]
+    ),
 ]
 ```
 
 ---
 
-### 2. Add one line to your `ContentView`
+### 2. Build and go
+
+With `SwiftL10nPlugin` on your target, **⌘B is all you need.** The plugin runs `swiftl10n scan` before the Swift compiler sees your files:
+
+```
+⌘B
+  └─ SwiftL10n: generate i18n.swift + Assets.swift   ← plugin runs first
+  └─ Compiling YourApp ...                            ← compiler sees fresh output
+Build complete!
+```
+
+Generated files land in DerivedData — nothing to commit to git. Use them immediately:
+
+```swift
+import SwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        Text(i18n.Home.welcomeBack())
+        Image(Assets.logo())
+    }
+}
+```
+
+> **Why this matters — the two-build gap.** The old `.task { SwiftL10n.scan() }` approach regenerated files at *runtime* after the first render. That meant adding a new key required two builds: one to trigger the scan, one to compile against the new output. `SwiftL10nPlugin` eliminates this by running before compilation on every build.
+
+---
+
+### Alternative: runtime scanning (quick start without a plugin)
+
+If you prefer not to use a build plugin, you can still call `SwiftL10n.scan()` at runtime. **Add `SwiftL10nCore` (not the plugin) to your app target**, then:
 
 ```swift
 import SwiftUI
@@ -176,6 +210,8 @@ Run the app once on Simulator or macOS. The Xcode console prints every detected 
 > Run the printed `cp` command once, drag the file into Xcode, and you're done. The `#if DEBUG` guard ensures `scan()` never runs in a release build.
 
 **Remove the `SwiftL10n.scan()` call** after both files are generated. You only need it when regenerating.
+
+> **Note:** The runtime approach requires two builds whenever you add a new key — one run to trigger the scan, one build to compile against the regenerated output. `SwiftL10nPlugin` eliminates this entirely.
 
 Your project layout after running:
 
@@ -740,6 +776,53 @@ Use with `--migration-mode strict` to fail the PR build when any new hardcoded s
 - name: SwiftL10n strict check
   run: swiftl10n scan --format github --migration-mode strict
 ```
+
+---
+
+### Build Tool Plugin
+
+`SwiftL10nPlugin` is an SPM build tool plugin that runs `swiftl10n scan` before the Swift compiler, eliminating the two-build gap that affects the runtime scanning approach.
+
+#### Setup (Xcode)
+
+1. **File → Add Package Dependencies** and add the SwiftL10n URL
+2. On the product chooser, select **SwiftL10nPlugin** (not `SwiftL10nCore` or `swiftl10n`)
+3. Open your target's **General** tab → **Frameworks, Libraries, and Embedded Content** — confirm `SwiftL10nPlugin` appears
+4. Build (⌘B) — the plugin runs automatically, writing `i18n.swift` and `Assets.swift` into DerivedData
+
+Xcode will ask for permission the first time the plugin runs. Grant it.
+
+#### Setup (Package.swift)
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.1.0"),
+],
+targets: [
+    .target(
+        name: "YourApp",
+        plugins: [
+            .plugin(name: "SwiftL10nPlugin", package: "SwiftL10n"),
+        ]
+    ),
+]
+```
+
+#### Migrating from runtime scanning
+
+If you were using `SwiftL10n.scan()` inside `.task {}`:
+
+1. Add `SwiftL10nPlugin` to your target (above)
+2. **Delete** `Generated/i18n.swift` and `Generated/Assets.swift` from your source tree and from git
+3. **Remove** the `.task { SwiftL10n.scan(...) }` block and the `SwiftL10nCore` import from your app code
+4. Build once — the plugin writes fresh generated files into DerivedData
+5. The files are now compiled automatically; no need to drag them into Xcode
+
+Generated files no longer live in your source tree, so they're never committed to git and never diverge between teammates.
+
+#### Config
+
+If a `.swiftl10n.yml` exists at or above your source directory, the plugin passes it to the scanner automatically. All config options (`enum_name`, `merge_strategy`, `minimum_confidence`, etc.) are honoured. Only `output` and `assets_output` are overridden to point to DerivedData.
 
 ---
 
