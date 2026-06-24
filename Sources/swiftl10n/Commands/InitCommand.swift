@@ -90,6 +90,20 @@ struct InitCommand: ParsableCommand {
         # or .accessibilityHidden in the SwiftUI modifier chain. Opt-in.
         # accessibility_audit:
         #   enabled: false
+
+        # String discovery — detects strings that aren't inline literals.
+        #
+        # static_constants: scan static let/var name = "…" inside enums and structs.
+        #   Results appear at confidence ≈0.60 (below the default 0.85 threshold).
+        #   Lower minimum_confidence to 0.5 to surface them.
+        #
+        # indirect_argument_hints: emit a suggestion when a UI call site receives
+        #   a non-literal argument — e.g. Text(someVariable). Visible only with
+        #   --verbose; never shown in CI or normal runs.
+        #
+        # string_discovery:
+        #   static_constants: true
+        #   indirect_argument_hints: true
         """
 
         try yaml.write(to: configURL, atomically: true, encoding: .utf8)

@@ -74,23 +74,23 @@ Seven principles govern every design decision:
 
 ## Quick Start
 
-Add the package, add one line to your `ContentView`, change one path, run.
+Three steps. First build generates everything.
 
 ### 1. Add the package
 
-**Xcode:** File → Add Package Dependencies → paste the URL:
+**Xcode:** File → Add Package Dependencies → paste:
 
 ```
 https://github.com/GRimAce11/SwiftL10n.git
 ```
 
-Xcode shows three products:
+On the product chooser, **select only `SwiftL10nPlugin`** and add it to your app target. Ignore `SwiftL10nCore` and `swiftl10n` unless you need the programmatic API or CLI.
 
-| Product | What it is | Add to app? |
+| Product | Purpose | Add to app? |
 |---|---|---|
-| `SwiftL10nPlugin` | Build tool plugin — generates files before every compile | **Yes ✓ (recommended)** |
-| `SwiftL10nCore` | The library — scanning, validation, and generation API | Optional (programmatic use) |
-| `swiftl10n` | A CLI terminal tool — not a library | No ✗ |
+| `SwiftL10nPlugin` | Build tool plugin — generates `i18n.swift` + `Assets.swift` before every compile | **Yes ✓** |
+| `SwiftL10nCore` | Library for the programmatic scanning API | Only if needed |
+| `swiftl10n` | CLI terminal tool | No ✗ |
 
 **Package.swift:**
 
@@ -108,11 +108,13 @@ targets: [
 ]
 ```
 
+> **First-time Xcode permission prompt:** when you build for the first time Xcode shows a dialog asking whether to allow the plugin to run. Click **Trust & Enable**. This is a one-time prompt per project.
+
 ---
 
-### 2. Build and go
+### 2. Build once (⌘B)
 
-With `SwiftL10nPlugin` on your target, **⌘B is all you need.** The plugin runs `swiftl10n scan` before the Swift compiler sees your files:
+The plugin runs `swiftl10n scan` before the Swift compiler on every build:
 
 ```
 ⌘B
@@ -121,20 +123,26 @@ With `SwiftL10nPlugin` on your target, **⌘B is all you need.** The plugin runs
 Build complete!
 ```
 
-Generated files land in DerivedData — nothing to commit to git. Use them immediately:
+Generated files land in DerivedData — **nothing to drag into Xcode, nothing to commit to git.** They are compiled automatically as part of your target.
+
+---
+
+### 3. Use the generated API
 
 ```swift
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        Text(i18n.Home.welcomeBack())
-        Image(Assets.logo())
+        Text(i18n.Home.welcomeBack())          // type i18n. → Xcode autocompletes
+        Image(Assets.logo())                   // type Assets. → Xcode autocompletes
     }
 }
 ```
 
-> **Why this matters — the two-build gap.** The old `.task { SwiftL10n.scan() }` approach regenerated files at *runtime* after the first render. That meant adding a new key required two builds: one to trigger the scan, one to compile against the new output. `SwiftL10nPlugin` eliminates this by running before compilation on every build.
+Every hardcoded string and every asset in your `.xcassets` catalog gets a typed accessor. Namespaces are derived from file names — `HomeView.swift` → `i18n.Home`, `SettingsView.swift` → `i18n.Settings`.
+
+> **The two-build gap is gone.** The old `.task { SwiftL10n.scan() }` approach regenerated files at *runtime* after the first frame rendered. Adding a new key required two builds: one to trigger the scan, one to compile against the output. The plugin runs before compilation so the generated file is always current — one build is enough.
 
 ---
 
@@ -213,7 +221,7 @@ Run the app once on Simulator or macOS. The Xcode console prints every detected 
 
 > **Note:** The runtime approach requires two builds whenever you add a new key — one run to trigger the scan, one build to compile against the regenerated output. `SwiftL10nPlugin` eliminates this entirely.
 
-Your project layout after running:
+Your project layout (plugin approach — nothing changes in your source tree):
 
 ```
 YourApp/
@@ -222,13 +230,43 @@ YourApp/
     └── YourApp/
         ├── ContentView.swift
         ├── HomeView.swift
-        ├── SettingsView.swift
-        └── Generated/
-            ├── i18n.swift      ← localization API, created automatically
-            └── Assets.swift    ← asset API, created automatically
+        └── SettingsView.swift
 ```
 
-**Drag both files into your Xcode Project Navigator** and tick your app target — done.
+```
+DerivedData/.../SwiftL10nPlugin/   ← generated here, compiled automatically
+    ├── i18n.swift
+    └── Assets.swift
+```
+
+No drag needed, no git commit needed — the plugin manages both files.
+
+---
+
+### Troubleshooting first build
+
+**Xcode shows a permission dialog asking whether to trust the plugin**  
+Click **Trust & Enable**. This is a one-time prompt per project. Without it the plugin is disabled and no files are generated.
+
+**`i18n` / `Assets` type not found after adding the plugin**  
+The plugin only runs when you build. Press **⌘B** (not just run). If the type still can't be found, check that `SwiftL10nPlugin` appears in your target's Build Phases → Run Build Tool Plug-ins.
+
+**Too many false-positive detections cluttering the output**  
+Raise the threshold in `.swiftl10n.yml`:
+```yaml
+minimum_confidence: 0.95
+```
+Or suppress a specific line: `// swiftl10n:ignore`
+
+**Too few detections — strings from enums or variables aren't found**  
+Lower the threshold to surface static constants (confidence ≈0.60):
+```yaml
+minimum_confidence: 0.5
+```
+Add `--verbose` to see non-literal argument hints (`Text(someVariable)` etc.).
+
+**Plugin output path is wrong / files written to wrong directory**  
+The plugin always writes to DerivedData. If you need the files in your source tree (e.g. for a legacy runtime setup), use the CLI or Xcode Build Phase approach instead — see [Build Tool Plugin → Migrating from runtime scanning](#build-tool-plugin).
 
 ---
 
@@ -317,7 +355,7 @@ Toggle(i18n.Settings.pushNotificationsToggleLabel(), isOn: $on)
 
 ### 5. What `Generated/Assets.swift` looks like
 
-`SwiftL10n.scan()` generates `Assets.swift` alongside `i18n.swift` — nothing extra to configure. Every asset in every `.xcassets` catalog near your project path gets a typed accessor:
+`Assets.swift` is generated alongside `i18n.swift` on every build — nothing extra to configure. Every asset in every `.xcassets` catalog near your source directory gets a typed accessor:
 
 ```swift
 // Auto-generated by SwiftL10n — do not edit.
@@ -369,7 +407,7 @@ Assets.Icons.profileIcon()
 Assets.Theme.primaryBlue()
 ```
 
-**Drag `Generated/Assets.swift` into your Xcode Project Navigator** and tick your app target. Generation is from the catalog, not from source: every asset in the catalog gets an accessor, regardless of whether your code has referenced it yet.
+Generation is from the catalog, not from source: every asset in the catalog gets an accessor, regardless of whether your code has referenced it yet. With `SwiftL10nPlugin`, `Assets.swift` lands in DerivedData and is compiled automatically — no drag required.
 
 > **Namespace-aware:** if an asset group in Xcode has **Provides Namespace** enabled, the generated path mirrors it — `Assets.Icons.profileIcon()` for `Icons/profile_icon`. Groups without the setting are transparent.
 
@@ -714,6 +752,21 @@ string_catalog:
 # Default: false — opt-in to avoid noise in existing codebases.
 accessibility_audit:
   enabled: false
+
+# String discovery — controls detection of strings that aren't inline literals.
+#
+# static_constants: scan `static let/var name = "…"` inside enums, structs,
+#   and classes. Results appear at confidence ≈0.60 — below the default 0.85
+#   threshold, so invisible unless you lower minimum_confidence. Default: true.
+#
+# indirect_argument_hints: emit a `.suggestion` diagnostic when a known UI
+#   call site receives a non-literal argument — e.g. `Text(someVariable)`.
+#   Suggestions are hidden in normal output; visible only with --verbose.
+#   Never shown in CI / non-verbose runs. Default: true.
+#
+# string_discovery:
+#   static_constants: true
+#   indirect_argument_hints: true
 ```
 
 **CLI flags always override config values.** For example, `swiftl10n scan --min-confidence 0.95` ignores `minimum_confidence` in the config for that run.
@@ -1710,23 +1763,43 @@ These constraints are not scheduled features. They are permanent decisions that 
 
 ## Installation
 
-### `SwiftL10nCore` — library for your app
+### `SwiftL10nPlugin` — build tool plugin (recommended for app targets)
+
+Generates `i18n.swift` and `Assets.swift` before every compile. No runtime code needed.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.0.0"),
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.1.0"),
 ],
 targets: [
     .target(
         name: "YourApp",
+        plugins: [
+            .plugin(name: "SwiftL10nPlugin", package: "SwiftL10n"),
+        ]
+    ),
+]
+```
+
+Or in Xcode: **File → Add Package Dependencies** → enter the URL → tick only **`SwiftL10nPlugin`**.
+
+### `SwiftL10nCore` — library (programmatic API only)
+
+Use this if you need to call the scanning API from your own code (e.g. a CLI tool, test harness, or custom pipeline). Most apps should use the plugin instead.
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/GRimAce11/SwiftL10n.git", from: "1.1.0"),
+],
+targets: [
+    .target(
+        name: "YourTool",
         dependencies: [
             .product(name: "SwiftL10nCore", package: "SwiftL10n"),
         ]
     ),
 ]
 ```
-
-Or in Xcode: **File → Add Package Dependencies** → enter the URL → tick only **`SwiftL10nCore`**.
 
 ### `swiftl10n` — CLI tool
 
@@ -1759,7 +1832,7 @@ No binary copy needed — `swift run` compiles on first use and caches the resul
 swift test
 ```
 
-517 tests across 33 test files, 0 failures.
+507 tests across 35 test files, 0 failures.
 
 | File | What it tests |
 |---|---|
@@ -1796,6 +1869,7 @@ swift test
 | `StringCatalogValidatorTests.swift` | Missing key detection, orphaned key detection, location propagation, interpolated string exclusion, empty catalog skip, cross-namespace deduplication |
 | `DuplicateLocalizationTests.swift` | Catalog duplicate groups, unique-value no-flag, sorted output, nil-sourceValue fallback, cross-namespace detection, interpolated exclusion |
 | `AccessibilityAuditTests.swift` | Unflagged (with modifier, chain, `systemName:`, `decorative:`), flagged (bare literal, multiple), location accuracy, pipeline integration (default-off, enabled) |
+| `StringDiscoveryTests.swift` | Static `let`/`var` detection (enum/struct/class), confidence threshold gating, false-positive filter, indirect argument hints, severity (suggestion not warning), opt-out config, YAML round-trip |
 
 ---
 
