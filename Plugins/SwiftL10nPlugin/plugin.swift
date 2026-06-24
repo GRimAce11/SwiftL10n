@@ -1,17 +1,6 @@
 import PackagePlugin
 import Foundation
 
-/// Build tool plugin that runs `swiftl10n scan` before Swift compilation,
-/// eliminating the two-build gap caused by the runtime `.task {}` approach.
-///
-/// **SPM package targets (Package.swift):**
-/// ```swift
-/// .target(name: "MyApp", plugins: [.plugin(name: "SwiftL10nPlugin", package: "SwiftL10n")])
-/// ```
-///
-/// **Xcode project targets (.xcodeproj):**
-/// Select your app target → Build Phases → + → Add Build Tool Plug-in →
-/// choose SwiftL10nPlugin. Grant permission when prompted.
 @main
 struct SwiftL10nPlugin: BuildToolPlugin {
 
@@ -24,9 +13,10 @@ struct SwiftL10nPlugin: BuildToolPlugin {
         let workDir = context.pluginWorkDirectoryURL
         let i18nURL   = workDir.appendingPathComponent("i18n.swift")
         let assetsURL = workDir.appendingPathComponent("Assets.swift")
-        let sourceDir = sourceTarget.directoryURL.path(percentEncoded: false)
+        // directoryURL is not yet available in this SDK; directory.string still works.
+        let sourceDir = sourceTarget.directory.string
 
-        var args: [CustomStringConvertible] = [
+        var args: [String] = [
             "scan", sourceDir,
             "--output",        i18nURL.path(percentEncoded: false),
             "--assets-output", assetsURL.path(percentEncoded: false),
@@ -66,10 +56,9 @@ struct SwiftL10nPlugin: BuildToolPlugin {
 
 #if canImport(XcodeProjectPlugin)
 import XcodeProjectPlugin
-
-// Swift treats a bare `XcodeProjectPlugin` in a conformance position as the
-// module name, not the protocol. The module-qualified form resolves the ambiguity.
-extension SwiftL10nPlugin: XcodeProjectPlugin.XcodeProjectPlugin {
+// The XcodeProjectPlugin *module* exports XcodePluginContext and XcodeTarget but
+// does NOT contain the XcodeProjectPlugin *protocol* — that lives in PackagePlugin.
+extension SwiftL10nPlugin: PackagePlugin.XcodeProjectPlugin {
 
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
         let tool    = try context.tool(named: "swiftl10n")
@@ -82,9 +71,9 @@ extension SwiftL10nPlugin: XcodeProjectPlugin.XcodeProjectPlugin {
         }
         guard !swiftFiles.isEmpty else { return [] }
 
-        let projectDir = context.xcodeProject.directoryURL.path(percentEncoded: false)
+        let projectDir = context.xcodeProject.directory.string
 
-        var args: [CustomStringConvertible] = [
+        var args: [String] = [
             "scan", projectDir,
             "--output",        i18nURL.path(percentEncoded: false),
             "--assets-output", assetsURL.path(percentEncoded: false),
