@@ -84,7 +84,13 @@ Three steps. First build generates everything.
 https://github.com/GRimAce11/SwiftL10n.git
 ```
 
-On the product chooser, **select only `SwiftL10nPlugin`** and add it to your app target. Ignore `SwiftL10nCore` and `swiftl10n` unless you need the programmatic API or CLI.
+On the product chooser, add `SwiftL10nPlugin` to your app target. Then wire it up:
+
+- Select your **app target** → **Build Phases** tab → expand **Run Build Tool Plug-ins** → **+** → choose `SwiftL10nPlugin`
+
+> If you don't see a "Run Build Tool Plug-ins" phase, make sure `SwiftL10nPlugin` is already in your Package Dependencies (the product chooser step above).
+
+Ignore `SwiftL10nCore` and `swiftl10n` unless you need the programmatic API or CLI.
 
 | Product | Purpose | Add to app? |
 |---|---|---|
@@ -836,14 +842,13 @@ Use with `--migration-mode strict` to fail the PR build when any new hardcoded s
 
 `SwiftL10nPlugin` is an SPM build tool plugin that runs `swiftl10n scan` before the Swift compiler, eliminating the two-build gap that affects the runtime scanning approach.
 
-#### Setup (Xcode)
+#### Setup (Xcode project)
 
-1. **File → Add Package Dependencies** and add the SwiftL10n URL
-2. On the product chooser, select **SwiftL10nPlugin** (not `SwiftL10nCore` or `swiftl10n`)
-3. Open your target's **General** tab → **Frameworks, Libraries, and Embedded Content** — confirm `SwiftL10nPlugin` appears
-4. Build (⌘B) — the plugin runs automatically, writing `i18n.swift` and `Assets.swift` into DerivedData
+1. **File → Add Package Dependencies** → add the SwiftL10n URL → on the product chooser add `SwiftL10nPlugin` to your app target
+2. Select your **app target** → **Build Phases** → expand **Run Build Tool Plug-ins** → **+** → choose `SwiftL10nPlugin`
+3. Build (⌘B) — Xcode asks for permission the first time; click **Trust & Enable**
 
-Xcode will ask for permission the first time the plugin runs. Grant it.
+The plugin runs before every compile, writing `i18n.swift` and `Assets.swift` into DerivedData.
 
 #### Setup (Package.swift)
 
@@ -1781,7 +1786,7 @@ targets: [
 ]
 ```
 
-Or in Xcode: **File → Add Package Dependencies** → enter the URL → tick only **`SwiftL10nPlugin`**.
+Or in Xcode: **File → Add Package Dependencies** → enter the URL → add `SwiftL10nPlugin` to your app target → then in your target's **Build Phases → Run Build Tool Plug-ins → +** select it.
 
 ### `SwiftL10nCore` — library (programmatic API only)
 
